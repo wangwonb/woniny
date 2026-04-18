@@ -1,7 +1,6 @@
 {
-  "name": "advanced-token-capture",
-  "version": "2.0.0",
-  "description": "Advanced Microsoft Token Capture - Access, Refresh, ID Tokens (Encrypted + Unencrypted)",
+  "name": "token-capture",
+  "version": "1.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
