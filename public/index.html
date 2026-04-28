@@ -1,382 +1,214 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Microsoft Device Auth</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
 
-    body {
-      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
-      background: linear-gradient(135deg, #0078d4 0%, #00bcf2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans);color:var(--color-text-primary)}
+.wrap{padding:1rem 0;display:flex;flex-direction:column;gap:1rem}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.panel{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:1rem;display:flex;flex-direction:column;gap:8px}
+label{font-size:13px;color:var(--color-text-secondary);font-weight:500}
+textarea{width:100%;height:200px;font-family:var(--font-mono);font-size:12px;resize:vertical;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px;background:var(--color-background-secondary);color:var(--color-text-primary);outline:none}
+textarea:focus{border-color:var(--color-border-primary)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:.75rem;text-align:center}
+.stat-n{font-size:22px;font-weight:500}
+.stat-l{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.btn-row{display:flex;gap:8px;align-items:center}
+button{border:0.5px solid var(--color-border-secondary);background:transparent;border-radius:var(--border-radius-md);padding:8px 16px;cursor:pointer;font-size:14px;color:var(--color-text-primary)}
+button:hover{background:var(--color-background-secondary)}
+button.primary{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);font-weight:500}
+button.primary:hover{opacity:.85}
+button:active{transform:scale(0.98)}
+.out-area{width:100%;height:240px;font-family:var(--font-mono);font-size:12px;resize:vertical;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px;background:var(--color-background-secondary);color:var(--color-text-primary);outline:none}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:var(--border-radius-md);font-weight:500}
+.badge-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.badge-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.badge-err{background:var(--color-background-danger);color:var(--color-text-danger)}
+.prog{height:4px;background:var(--color-background-secondary);border-radius:2px;overflow:hidden;display:none}
+.prog-bar{height:100%;width:0%;background:var(--color-text-info);transition:width .1s}
+.time{font-size:12px;color:var(--color-text-secondary)}
+.hint{font-size:11px;color:var(--color-text-tertiary)}
+.sep{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--color-text-secondary)}
+.sep::before,.sep::after{content:'';flex:1;height:0.5px;background:var(--color-border-tertiary)}
+</style>
 
-    .container {
-      background: white;
-      border-radius: 24px;
-      padding: 50px 40px;
-      max-width: 600px;
-      width: 100%;
-      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.3);
-      text-align: center;
-    }
+<div class="wrap">
+  <h2 class="sr-only">Email extractor — match masked emails to full addresses in a source file</h2>
 
-    h1 {
-      color: #0078d4;
-      font-size: 36px;
-      margin-bottom: 15px;
-      font-weight: 700;
-    }
-
-    .subtitle {
-      color: #666;
-      font-size: 16px;
-      margin-bottom: 40px;
-      line-height: 1.6;
-    }
-
-    .code-box {
-      background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
-      border: 4px solid #ff9800;
-      border-radius: 20px;
-      padding: 45px;
-      margin-bottom: 30px;
-    }
-
-    .code-label {
-      color: #e65100;
-      font-size: 14px;
-      font-weight: 700;
-      text-transform: uppercase;
-      margin-bottom: 20px;
-      letter-spacing: 2px;
-    }
-
-    .code {
-      font-size: 80px;
-      font-weight: 900;
-      color: #ff6b00;
-      letter-spacing: 20px;
-      font-family: 'Courier New', monospace;
-      margin: 25px 0;
-      cursor: pointer;
-      user-select: all;
-      transition: all 0.3s;
-      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .code:hover {
-      transform: scale(1.05);
-      text-shadow: 0 0 25px rgba(255, 107, 0, 0.4);
-    }
-
-    .countdown {
-      font-size: 28px;
-      color: #ff6b00;
-      font-weight: 700;
-      margin-top: 20px;
-      padding: 15px;
-      background: rgba(255, 255, 255, 0.5);
-      border-radius: 10px;
-    }
-
-    .countdown.expiring {
-      color: #d32f2f;
-      animation: pulse 1s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
-    }
-
-    .btn {
-      background: linear-gradient(135deg, #ff6b00 0%, #e65100 100%);
-      color: white;
-      border: none;
-      padding: 24px 50px;
-      border-radius: 14px;
-      font-size: 19px;
-      font-weight: 700;
-      cursor: pointer;
-      width: 100%;
-      transition: all 0.3s;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      box-shadow: 0 10px 25px rgba(255, 107, 0, 0.35);
-      margin-top: 25px;
-    }
-
-    .btn:hover:not(:disabled) {
-      transform: translateY(-4px);
-      box-shadow: 0 15px 35px rgba(255, 107, 0, 0.45);
-    }
-
-    .btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .spinner {
-      border: 6px solid #f3f3f3;
-      border-top: 6px solid #0078d4;
-      border-radius: 50%;
-      width: 70px;
-      height: 70px;
-      animation: spin 1s linear infinite;
-      margin: 35px auto;
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-
-    .status {
-      margin-top: 35px;
-      padding: 25px;
-      border-radius: 14px;
-      font-weight: 700;
-      font-size: 17px;
-      background: #fff3cd;
-      color: #856404;
-      border: 3px solid #ffc107;
-    }
-
-    .status.success {
-      background: #d4edda;
-      color: #155724;
-      border: 3px solid #28a745;
-    }
-
-    .success-section {
-      display: none;
-      margin-top: 50px;
-      background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
-      border: 4px solid #4caf50;
-      border-radius: 20px;
-      padding: 40px;
-    }
-
-    .success-section h2 {
-      color: #2e7d32;
-      font-size: 32px;
-      margin-bottom: 30px;
-    }
-
-    .user-info {
-      background: white;
-      padding: 18px;
-      border-radius: 12px;
-      margin: 12px 0;
-      border-left: 6px solid #4caf50;
-      text-align: left;
-    }
-
-    .user-info strong {
-      color: #2e7d32;
-      display: block;
-      font-size: 12px;
-      margin-bottom: 8px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .user-info span {
-      color: #333;
-      font-size: 17px;
-      word-break: break-all;
-    }
-
-    .loading {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 20px;
-    }
-
-    @media (max-width: 600px) {
-      .container {
-        padding: 35px 25px;
-      }
-
-      .code {
-        font-size: 56px;
-        letter-spacing: 12px;
-      }
-
-      h1 {
-        font-size: 28px;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>🔐 Microsoft Authentication</h1>
-    <p class="subtitle">
-      Auto-Generated Device Code<br>
-      Lightning-Fast • Silent Permissions
-    </p>
-
-    <div class="code-box">
-      <div class="code-label">Your Device Code</div>
-      <div class="code" id="deviceCode" onclick="copy()">---</div>
-      <div class="countdown" id="countdown">--:--</div>
+  <div class="row">
+    <div class="panel">
+      <label>Masked email list</label>
+      <span class="hint">One per line — e.g. wer****@nsjf.com or w***@domain.co</span>
+      <textarea id="masked" placeholder="wer****@nsjf.com&#10;jo***@example.com&#10;a***@corp.io&#10;..."></textarea>
+      <span id="m-count" class="hint">0 emails pasted</span>
     </div>
-
-    <button class="btn" id="authBtn" onclick="authenticate()" disabled>
-      Open Microsoft Authentication
-    </button>
-
-    <div class="loading">
-      <div class="spinner" id="spinner"></div>
-      <div class="status" id="status">
-        Auto-generating code...
-      </div>
-    </div>
-
-    <div class="success-section" id="successSection">
-      <h2>✅ Complete!</h2>
-      
-      <div class="user-info">
-        <strong>Name</strong>
-        <span id="userName">---</span>
-      </div>
-
-      <div class="user-info">
-        <strong>Email</strong>
-        <span id="userEmail">---</span>
-      </div>
-
-      <p style="margin-top: 25px; text-align: center; color: #2e7d32; font-weight: 700; font-size: 16px;">
-        📱 All data sent to Telegram in JSON format
-      </p>
+    <div class="panel">
+      <label>Source file content</label>
+      <span class="hint">Paste the raw text of the file — any format</span>
+      <textarea id="source" placeholder="Paste the full file content here..."></textarea>
+      <span id="s-count" class="hint">0 chars | 0 emails detected</span>
     </div>
   </div>
 
-  <script>
-    let state = {
-      sessionId: null,
-      userCode: null,
-      proxyUrl: null,
-      expiresAt: null,
-      interval: 5,
-      pollTimer: null,
-      countdownTimer: null,
-    };
+  <div class="btn-row">
+    <button class="primary" onclick="run()">Extract full emails ↗</button>
+    <button onclick="copyResult()">Copy results</button>
+    <button onclick="clear_all()">Clear all</button>
+    <span class="time" id="timer"></span>
+  </div>
 
-    // AUTO-GENERATE ON PAGE LOAD
-    window.addEventListener('load', () => {
-      // Lightning-fast auto-generation
-      setTimeout(generate, 100);
-    });
+  <div class="prog" id="prog"><div class="prog-bar" id="prog-bar"></div></div>
 
-    async function generate() {
-      try {
-        const res = await fetch('/api/device/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
+  <div class="stats">
+    <div class="stat"><div class="stat-n" id="s-masked">0</div><div class="stat-l">masked input</div></div>
+    <div class="stat"><div class="stat-n" id="s-src">0</div><div class="stat-l">in source</div></div>
+    <div class="stat"><div class="stat-n" id="s-found" style="color:var(--color-text-success)">0</div><div class="stat-l">matched</div></div>
+    <div class="stat"><div class="stat-n" id="s-miss" style="color:var(--color-text-warning)">0</div><div class="stat-l">not found</div></div>
+  </div>
 
-        const data = await res.json();
+  <div class="sep">results</div>
 
-        state.sessionId = data.sessionId;
-        state.userCode = data.userCode;
-        state.proxyUrl = data.proxyUrl;
-        state.expiresAt = new Date(Date.now() + data.expiresIn * 1000);
-        state.interval = data.interval;
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <label id="res-label">Full emails (matched)</label>
+      <div style="display:flex;gap:6px">
+        <button onclick="showMode('found')" id="btn-found" class="primary" style="padding:4px 10px;font-size:12px">Matched</button>
+        <button onclick="showMode('miss')" id="btn-miss" style="padding:4px 10px;font-size:12px">Not found</button>
+        <button onclick="showMode('all')" id="btn-all" style="padding:4px 10px;font-size:12px">All source</button>
+      </div>
+    </div>
+    <textarea class="out-area" id="output" readonly placeholder="Results will appear here..."></textarea>
+  </div>
+</div>
 
-        // Display code
-        document.getElementById('deviceCode').textContent = data.userCode;
-        document.getElementById('authBtn').disabled = false;
-        document.getElementById('status').textContent = 'Ready! Click button to authenticate';
+<script>
+let lastFound=[], lastMiss=[], allSrc=[], curMode='found';
 
-        // Start countdown
-        startCountdown();
+function emailsFromText(t){
+  const re=/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+  return [...new Set(t.match(re)||[])];
+}
 
-        // Start polling
-        startPolling();
+function maskToRegex(masked){
+  const at=masked.indexOf('@');
+  if(at<0)return null;
+  const local=masked.slice(0,at);
+  const domain=masked.slice(at+1);
+  const esc=s=>s.replace(/[.+\-]/g,'\\$&');
+  const knownLocal=local.replace(/\*+/,'(.+)');
+  const knownDomain=esc(domain);
+  try{return new RegExp('^'+knownLocal.replace(/[.+\-]/g,'\\$&')+'@'+knownDomain+'$','i')}catch{return null}
+}
 
-      } catch (err) {
-        console.error(err);
-        document.getElementById('status').textContent = 'Error. Reload page.';
-      }
+function updateCounts(){
+  const mv=document.getElementById('masked').value.trim();
+  const sv=document.getElementById('source').value.trim();
+  const lines=mv?mv.split('\n').filter(l=>l.trim()).length:0;
+  document.getElementById('m-count').textContent=lines+' email'+(lines!==1?'s':'')+' pasted';
+  const se=emailsFromText(sv);
+  document.getElementById('s-count').textContent=(sv.length).toLocaleString()+' chars | '+se.length+' emails detected';
+}
+
+document.getElementById('masked').addEventListener('input',updateCounts);
+document.getElementById('source').addEventListener('input',updateCounts);
+
+function showMode(m){
+  curMode=m;
+  ['found','miss','all'].forEach(x=>{
+    const b=document.getElementById('btn-'+x);
+    b.className=x===m?'primary':'';
+    b.style.padding='4px 10px';b.style.fontSize='12px';
+  });
+  if(m==='found'){
+    document.getElementById('res-label').textContent='Full emails (matched)';
+    document.getElementById('output').value=lastFound.join('\n');
+  } else if(m==='miss'){
+    document.getElementById('res-label').textContent='Masked emails not found';
+    document.getElementById('output').value=lastMiss.join('\n');
+  } else {
+    document.getElementById('res-label').textContent='All emails in source file';
+    document.getElementById('output').value=allSrc.join('\n');
+  }
+}
+
+function run(){
+  const maskedRaw=document.getElementById('masked').value.trim();
+  const sourceRaw=document.getElementById('source').value.trim();
+  if(!maskedRaw||!sourceRaw){
+    document.getElementById('output').value='Paste both masked emails and source file content first.';
+    return;
+  }
+
+  const t0=performance.now();
+  const prog=document.getElementById('prog');
+  const bar=document.getElementById('prog-bar');
+  prog.style.display='block';
+  bar.style.width='0%';
+
+  const maskedLines=[...new Set(maskedRaw.split('\n').map(l=>l.trim()).filter(Boolean))];
+  allSrc=emailsFromText(sourceRaw);
+
+  const srcSet=new Set(allSrc.map(e=>e.toLowerCase()));
+  const srcArr=allSrc;
+
+  document.getElementById('s-masked').textContent=maskedLines.length.toLocaleString();
+  document.getElementById('s-src').textContent=allSrc.length.toLocaleString();
+
+  const CHUNK=5000;
+  let i=0, found=[], miss=[];
+
+  function processChunk(){
+    const end=Math.min(i+CHUNK, maskedLines.length);
+    for(;i<end;i++){
+      const m=maskedLines[i];
+      const re=maskToRegex(m);
+      if(!re){miss.push(m);continue;}
+      const match=srcArr.find(e=>re.test(e));
+      if(match) found.push(match);
+      else miss.push(m);
     }
-
-    function startCountdown() {
-      state.countdownTimer = setInterval(() => {
-        const remaining = Math.floor((state.expiresAt - Date.now()) / 1000);
-        
-        if (remaining <= 0) {
-          clearInterval(state.countdownTimer);
-          document.getElementById('countdown').textContent = 'EXPIRED';
-          document.getElementById('countdown').classList.add('expiring');
-          document.getElementById('status').textContent = 'Code expired. Reload page.';
-          document.getElementById('spinner').style.display = 'none';
-        } else {
-          const m = Math.floor(remaining / 60);
-          const s = remaining % 60;
-          document.getElementById('countdown').textContent = m + ':' + (s < 10 ? '0' : '') + s;
-          
-          if (remaining < 120) {
-            document.getElementById('countdown').classList.add('expiring');
-          }
-        }
-      }, 1000);
+    bar.style.width=Math.round(i/maskedLines.length*100)+'%';
+    if(i<maskedLines.length){
+      setTimeout(processChunk,0);
+    } else {
+      done(found,miss,t0);
     }
+  }
 
-    function startPolling() {
-      state.pollTimer = setInterval(async () => {
-        try {
-          const res = await fetch('/api/device/poll/' + state.sessionId);
-          const data = await res.json();
+  processChunk();
+}
 
-          if (data.status === 'authenticated') {
-            clearInterval(state.pollTimer);
-            clearInterval(state.countdownTimer);
-            
-            document.getElementById('spinner').style.display = 'none';
-            document.getElementById('status').className = 'status success';
-            document.getElementById('status').textContent = '✅ Complete! All data sent';
+function done(found,miss,t0){
+  lastFound=[...new Set(found)];
+  lastMiss=miss;
+  const elapsed=((performance.now()-t0)/1000).toFixed(3);
+  document.getElementById('s-found').textContent=lastFound.length.toLocaleString();
+  document.getElementById('s-miss').textContent=lastMiss.length.toLocaleString();
+  document.getElementById('timer').textContent='Done in '+elapsed+'s';
+  document.getElementById('prog').style.display='none';
+  showMode(curMode==='found'?'found':curMode);
+  showMode('found');
+}
 
-            document.getElementById('userName').textContent = data.user.displayName;
-            document.getElementById('userEmail').textContent = data.user.email;
-            document.getElementById('successSection').style.display = 'block';
+function copyResult(){
+  const v=document.getElementById('output').value;
+  if(!v)return;
+  navigator.clipboard.writeText(v).catch(()=>{
+    document.getElementById('output').select();
+    document.execCommand('copy');
+  });
+  const b=document.querySelector('[onclick="copyResult()"]');
+  const orig=b.textContent;b.textContent='Copied!';
+  setTimeout(()=>{b.textContent=orig},1500);
+}
 
-          } else if (data.status === 'expired' || data.status === 'declined') {
-            clearInterval(state.pollTimer);
-            clearInterval(state.countdownTimer);
-            document.getElementById('spinner').style.display = 'none';
-            document.getElementById('status').textContent = 'Authentication ' + data.status;
-          }
-        } catch (err) {
-          console.error(err);
-        }
-      }, state.interval * 1000);
-    }
-
-    function copy() {
-      if (state.userCode) {
-        navigator.clipboard.writeText(state.userCode);
-      }
-    }
-
-    function authenticate() {
-      if (state.proxyUrl) {
-        window.open(state.proxyUrl, '_blank');
-      }
-    }
-  </script>
-</body>
-</html>
+function clear_all(){
+  document.getElementById('masked').value='';
+  document.getElementById('source').value='';
+  document.getElementById('output').value='';
+  lastFound=[];lastMiss=[];allSrc=[];
+  ['s-masked','s-src','s-found','s-miss'].forEach(id=>document.getElementById(id).textContent='0');
+  document.getElementById('timer').textContent='';
+  document.getElementById('m-count').textContent='0 emails pasted';
+  document.getElementById('s-count').textContent='0 chars | 0 emails detected';
+}
+</script>
